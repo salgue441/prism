@@ -1,6 +1,33 @@
 version: "3.8"
 
 services:
+  # Core Gateway Services
+  gateway:
+    build: .
+    container_name: prism-gateway
+    ports:
+      - "8080:8080" # HTTP API
+      - "8443:8443" # HTTPS API
+      - "9090:9090" # Admin/status port
+    volumes:
+      - ./configs:/app/configs
+      - ./docs:/app/docs
+    environment:
+      - PRISM_ENV=development
+      - PRISM_CONFIG_PAHT=/app/configs/prism.yml
+    depends_on:
+      redis:
+        condition: service_healthy
+      prometheus:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9090/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Redis
   redis:
     image: redis:7-alpine
     container_name: redis-gateway
@@ -17,5 +44,85 @@ services:
       timeout: 10s
       retries: 3
 
+  # Monitoring stack
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus-monitor
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana-enterprise:latest
+    container_name: grafana-dashboard
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/dashboards:/etc/grafana/provisioning/dashboards
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
+  # Auth Service (For OAuth 2.0/JWT)
+  auth-service:
+    image: oryd/hydra:v2.1.0
+    container_name: oauth-provider
+    ports:
+      - "4444:4444" # Public port
+      - "4445:4445" # Admin port
+    environment:
+      - DSN=memory
+      - URLS_SELF_ISSUER=http://auth-service:4444
+      - URLS_LOGIN=http://localhost:4444/login
+      - URLS_CONSENT=http://localhost:4444/consent
+    restart: unless-stopped
+
+  # Backend services (for development)
+  mock-http-service:
+    image: containous/whoami:latest
+    container_name: mock-http-backend
+    ports:
+      - "8081:80"
+    restart: unless-stopped
+
+  mock-grpc-service:
+    image: ghcr.io/grpc-ecosystem/grpc-health-probe:latest
+    container_name: mock-grpc-backend
+    ports:
+      - "50051:50051"
+    restart: unless-stopped
+
+  # Log management
+  loki:
+    image: grafana/loki:latest
+    container_name: log-aggregator
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    restart: unless-stopped
+
+  # API Documentation
+  swagger-ui:
+    image: swaggerapi/swagger-ui:latest
+    container_name: api-documentation
+    ports:
+      - "8082:8080"
+    environment:
+      - URLS_PRIMARY_NAME=Gateway API
+      - URLS_PRIMARY_URL=/docs/openapi.yaml
+    volumes:
+      - ./docs/swagger:/usr/share/nginx/html/docs
+    restart: unless-stopped
+
 volumes:
   redis_data:
+  grafana_data:
+  loki_data:
