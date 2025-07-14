@@ -22,6 +22,7 @@ type Config struct {
 	Redis      RedisConfig      `mapstructure:"redis" json:"redis" yaml:"redis"`
 	Logging    LoggingConfig    `mapstructure:"logging" json:"logging" yaml:"logging"`
 	Monitoring MonitoringConfig `mapstructure:"monitoring" json:"monitoring" yaml:"monitoring"`
+	Env        string           `mapstructure:"env" json:"env" yaml:"env"`
 }
 
 // ServerConfig holds HTTP server configuration.

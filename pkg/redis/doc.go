@@ -251,8 +251,8 @@
 //		CustomOperation(ctx context.Context, args ...interface{}) error
 //	}# pkg/redis/client.go
 //
-// Package redis provides a high-performance Redis client with connection 
-// pooling, health monitoring, and comprehensive error handling for the reverse 
+// Package redis provides a high-performance Redis client with connection
+// pooling, health monitoring, and comprehensive error handling for the reverse
 // API gateway.
 //
 // This package offers a production-ready Redis client that abstracts away the

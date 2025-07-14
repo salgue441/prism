@@ -24,7 +24,7 @@
 // Configuration is loaded from multiple sources in the following order of
 // precedence (highest to lowest):
 //
-//  1. Environment variables (prefixed with PRISMA_)
+//  1. Environment variables (prefixed with PRISM_)
 //  2. Configuration file (YAML format)
 //  3. Default values
 //
@@ -43,16 +43,16 @@
 // # Environment Variables
 //
 // All configuration options can be overridden using environment variables with
-// the PRISMA_ prefix. Nested configuration keys use underscores for separation.
+// the PRISM_ prefix. Nested configuration keys use underscores for separation.
 //
 // Examples:
 //
-//	PRISMA_SERVER_PORT=9090                 # server.port
-//	PRISMA_SERVER_HOST=127.0.0.1            # server.host
-//	PRISMA_REDIS_HOST=redis.example.com     # redis.host
-//	PRISMA_REDIS_PORT=6380                  # redis.port
-//	PRISMA_LOGGING_LEVEL=debug              # logging.level
-//	PRISMA_MONITORING_METRICS_ENABLED=false # monitoring.metrics_enabled
+//	PRISM_SERVER_PORT=9090                 # server.port
+//	PRISM_SERVER_HOST=127.0.0.1            # server.host
+//	PRISM_REDIS_HOST=redis.example.com     # redis.host
+//	PRISM_REDIS_PORT=6380                  # redis.port
+//	PRISM_LOGGING_LEVEL=debug              # logging.level
+//	PRISM_MONITORING_METRICS_ENABLED=false # monitoring.metrics_enabled
 //
 // # Configuration Structure
 //
@@ -77,14 +77,14 @@
 //
 // The package provides detailed error information for configuration issues:
 //
-//	config, err := config.Load()
-//	if err != nil {
-//		var validationErr *config.ValidationError
-//		if errors.As(err, &validationErr) {
-//			fmt.Printf("Invalid %s: %s\n", 
-//        validationErr.Field, validationErr.Message)
+//		config, err := config.Load()
+//		if err != nil {
+//			var validationErr *config.ValidationError
+//			if errors.As(err, &validationErr) {
+//				fmt.Printf("Invalid %s: %s\n",
+//	       validationErr.Field, validationErr.Message)
+//			}
 //		}
-//	}
 //
 // # Configuration File Format
 //
