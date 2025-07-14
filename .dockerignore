@@ -1,0 +1,16 @@
+.git
+.gitignore
+README.md
+.dockerignore
+bin/
+*.log
+.env
+.env.*
+coverage.out
+coverage.html
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
