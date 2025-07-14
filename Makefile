@@ -67,3 +67,11 @@ docker-build: ## Build Docker image (placeholder)
 
 docker-run: ## Run Docker container (placeholder)
 	@echo "$(YELLOW)Docker run coming in next iteration...$(NC)"
+
+## Docs 
+docs: 
+	@echo "Generating OpenAPI docs"
+	@swag init -g cmd/prism/main.go -o ./docs/openapi
+	@mkdir -p ./docs/swagger
+	@cp ./docs/openapi/swagger.json ./docs/swagger/openapi.yaml
+	@echo "Docs generated at ./docs/"

@@ -11,6 +11,8 @@ import (
 	"prism/pkg/redis"
 	"syscall"
 	"time"
+
+	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 // Application holds the main applicatino dependencies and configuration
@@ -19,6 +21,7 @@ type Application struct {
 	logger      logger.Logger
 	redisClient redis.Client
 	server      *http.Server
+	Env         string
 }
 
 // main is the entry point of the gateway application.
@@ -153,6 +156,15 @@ func (a *Application) initServer() error {
 // setupRoutes configures the HTTP routes and middleware chain.
 func (a *Application) setupRoutes() http.Handler {
 	mux := http.NewServeMux()
+
+	if a.config.Env != "production" {
+		swaggerHandler := httpSwagger.Handler(
+			httpSwagger.URL("/swagger/doc.json"),
+		)
+
+		mux.Handle("/swagger/", swaggerHandler)
+	}
+
 	if a.config.Monitoring.HealthCheckPath != "" {
 		mux.HandleFunc(a.config.Monitoring.HealthCheckPath, a.handleHealthCheck)
 	}
@@ -262,6 +274,19 @@ func (a *Application) handleMetrics(w http.ResponseWriter, r *http.Request) {
 
 // handleAPI handles API requests (placeholder implementation).
 // TODO: Implement API routing logic
+//
+// @Summary API Gateway Endpoint
+// @Description Handles all API requests through the gateway
+// @Security ApiKeyAuth
+// @Security BearerAuth
+// @Param path path string true "API path"
+// @Accept json
+// @Produce json
+// @Success 200 {object} GatewayResponse
+// @Router /api/{path} [get]
+// @Router /api/{path} [post]
+// @Router /api/{path} [put]
+// @Router /api/{path} [delete]
 func (a *Application) handleAPI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -272,6 +297,12 @@ func (a *Application) handleAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleRoot handles requests to the root path.
+//
+// @Summary Gateway Information
+// @Description Returns basic information about the gateway.
+// @Produce json
+// @Success 200 {object} GatewayInfo
+// @Router / [get]
 func (a *Application) handleRoot(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
@@ -387,6 +418,7 @@ func (a *Application) shutdown() error {
 }
 
 // getVersion returns the application version.
+//
 // In production, this would typically be set at build time using ldflags.
 // go build -ldflags "-X main.version=1.0.0"
 func getVersion() string {

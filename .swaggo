@@ -1,0 +1,7 @@
+propertyStrategy: camelcase
+output: docs/openapi
+parseVendor: true
+parseDependency: true
+parseInternal: true
+markdownFiles: ./docs/markdown
+generatedTime: true
