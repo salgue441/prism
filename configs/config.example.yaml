@@ -1,0 +1,15 @@
+server:
+  port: 8080
+  host: "0.0.0.0"
+  read_timeout: 30s
+  write_timeout: 30s
+
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+
+logging:
+  level: "info"
+  format: "json"
