@@ -1,68 +1,97 @@
 # Prism
 
-![banner]()
+![banner](./docs/banner.png)
+
+[![Go Report Card](https://goreportcard.com/badge/github.com/salgue441/prism)](https://goreportcard.com/report/github.com/salgue441/prism)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![GitHub Release](https://img.shields.io/github/v/release/salgue441/prism?include_prereleases)](https://github.com/salgue441/prism/releases)
+[![Docker Pulls](https://img.shields.io/docker/pulls/yourusername/prism)](https://hub.docker.com/r/yourusername/prism)
 
 **Prism** is a high-performance reverse API gateway written in **Go**, acting as a secure and intelligent entry point for external clients to access internal microservices.
 
 ## 🚀 Features
 
-- 🔒 **Multi-Factor Authentication**: Supports API Keys, JWT tokens, OAuth 2.0 flows
-- ⚡ **High Performance**: Designed for high-throughput, low-latency traffic
-- 📊 **Real-Time Metrics & Analytics**: API usage patterns, performance tracking, and security event logging
-- 🧠 **Intelligent Rate Limiting**: Redis-backed dynamic rate limiter
-- 🔀 **Protocol Translation**: Converts between HTTP/REST ↔ gRPC / GraphQL seamlessly
-- 🧩 **Request/Response Transformation**: Middleware-based transformation engine
-- 🔁 **Load Balancing**: Smart routing and distribution across backend services
-- 🧼 **Clean Architecture**: Built using Go best practices: Dependency Injection, Hexagonal Architecture, and modular design
-- 🔍 **Logging & Monitoring**: Structured logs and pluggable observability
+| Category      | Badges                                                                                                                                                                                                            |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Auth**      | ![JWT](https://img.shields.io/badge/JWT-000000?logo=JSON%20web%20tokens) ![OAuth2](https://img.shields.io/badge/OAuth2-EB5424?logo=auth0)                                                                         |
+| **Protocols** | ![gRPC](https://img.shields.io/badge/gRPC-4285F4?logo=google) ![GraphQL](https://img.shields.io/badge/GraphQL-E10098?logo=graphql) ![REST](https://img.shields.io/badge/REST-02569B?logo=rest)                    |
+| **Infra**     | ![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis) ![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?logo=prometheus) ![Grafana](https://img.shields.io/badge/Grafana-F46800?logo=grafana) |
 
 ## 🏗️ Architecture
 
-```plaintext
-                   ┌────────────────────────────┐
-                   │        External Client     │
-                   └────────────┬───────────────┘
-                                │
-                     ┌──────────▼───────────┐
-                     │      PRISM GATEWAY   │
-                     │ - Auth & Security    │
-                     │ - Rate Limiting      │
-                     │ - Protocol Adapter   │
-                     │ - Load Balancer      │
-                     │ - Analytics & Logs   │
-                     └──────────┬───────────┘
-                                │
-            ┌──────────┬────────┴─────────┬────────────┐
-            ▼          ▼                  ▼            ▼
-      gRPC Service   REST Service   GraphQL Service   etc...
+```mermaid
+flowchart TD
+subgraph Clients
+A[Web Client]
+B[Mobile App]
+C[3rd Party API]
+end
 
+    subgraph Prism["Prism Gateway (Go)"]
+        D[Auth Layer\nAPI Keys/JWT/OAuth2]
+        E[Rate Limiter\nRedis-backed]
+        F[Protocol Adapter\nHTTP ↔ gRPC ↔ GraphQL]
+        G[Load Balancer]
+        H[Monitoring\nPrometheus/Grafana]
+    end
+
+    subgraph BackendServices
+        I[REST API]
+        J[gRPC Service]
+        K[GraphQL Service]
+    end
+
+    Clients -->|HTTPS| D
+    D --> E
+    E --> F
+    F --> G
+    G --> H
+    H -->|Metrics| M[(Prometheus)]
+    E -->|Cache| N[(Redis)]
+
+    G --> I
+    G --> J
+    G --> K
+
+    classDef prism fill:#2688eb,stroke:#fff,color:white;
+    classDef client fill:#6e5494,stroke:#fff,color:white;
+    classDef storage fill:#e34c26,stroke:#fff,color:white;
+    classDef service fill:#2ea44f,stroke:#fff,color:white;
+
+    class Prism prism;
+    class Clients client;
+    class M,N storage;
+    class I,J,K service;
 ```
 
 ## ⚙️ Tech Stack
 
-- **Language**: Go (Golang)
-- **Auth**: OAuth2, JWT, API Keys
-- **Rate Limiting**: Redis
-- **Protocols**: HTTP, gRPC, GraphQL
-- **Architecture**: Clean Architecture, DI, Microservices
-- **Monitoring**: Prometheus, Grafana, OpenTelemetry
+```go
+import (
+  "github.com/redis/go-redis/v8"
+  "google.golang.org/grpc"
+  "github.com/prometheus/client_golang/prometheus"
+)
+```
 
-## 📦 Installation
+## 📦 Quick Start
 
 ```bash
-git clone https://github.com/salgue441/prism.git
-cd prism
+# Run with Docker
+docker-compose up -d --build
 
-go mod tidy
-go run cmd/main.go
+# Or build locally
+make build && ./prism -c configs/dev.yaml
 ```
 
 ## 🧪 Testing
 
 ```bash
-go test ./...
+make test          # Run unit tests
+make bench         # Run benchmarks
+make test-cover    # Test with coverage
 ```
 
 ## 📄 License
 
-[MIT](./LICENSE)
+Release under [MIT License](./LICENSE) - © 2025 Carlos Salguero
