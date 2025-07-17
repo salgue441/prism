@@ -1,119 +1,75 @@
-// Package logger provides a high-performance, structured logging interface
-// with multiple backend implementations for Go applications.
+// Package logger provides structured logging utilities for the API gateway and 
+// related applications.
 //
-// # Overview
+// This package wraps Go's standard log/slog package to provide consistent,
+// structured logging with sensible defaults and common configuration options.
+// It's designed to be used across multiple projects while maintaining
+// consistent log formatting and behavior.
 //
-// This package offers a unified logging interface that abstracts away the
-// underlying logging implementation, allowing applications to switch between
-// different logging backends without changing application code.
+// Features:
 //
-// The logger is designed with performance in mind, using the standard
-// library's slog package by default, which provides zero-allocation logging
-// for many common use cases.
-//
-// # Key Features
-//
-//   - Structured logging with key-value pairs
-//   - Context-aware logging for request tracing
-//   - Multiple output formats (JSON, text)
-//   - Configurable log levels and outputs
-//   - High performance with minimal allocations
+//   - JSON structured logging for production environments
+//   - Human-readable logging for development
+//   - Configurable log levels (Debug, Info, Warn, Error)
+//   - Context-aware logging with request tracing
+//   - Performance optimized with minimal allocations
 //   - Thread-safe operations
-//   - Persistent field attachment
-//   - Log grouping for better organization
 //
-// # Basic Usage
+// Log Levels:
 //
-//	// Create a logger with default configuration
-//	logger, err := logger.New(logger.Config{
-//	  Level: "info",
-//	  Format: "json",
-//	  Output: "stdout",
-//	})
+//	Debug - Detailed information for debugging (includes source location)
+//	Info  - General informational messages (default level)
+//	Warn  - Warning messages for potentially harmful situations
+//	Error - Error messages for serious problems
 //
-//	if err != nil {
-//	  log.Fatal(err)
-//	}
+// Output Formats:
 //
-//	// Simple logging
-//	logger.Info("application started")
+// The logger supports different output formats optimized for different 
+// environments:
 //
-//	// Structured logging with fields
-//	logger.Info("user logged in",
-//	  "user_id", 12345,
-//	  "email", "user@example.com",
-//	  "ip", "192.168.1.1")
+//   - JSON format for production (machine-readable, structured)
+//   - Text format for development (human-readable, colorized)
 //
-//	// Context-aware logging
-//	ctx := context.WithValue(context.Backgound(), "request_id", "req-123")
-//	logger.InfoContext(ctx, "processing request")
+// Usage Examples:
 //
-// # Advanced Usage
+//	// Create a basic logger
+//	log := logger.New()
+//	log.Info("Server starting", slog.Int("port", 8080))
 //
-//	// Create logger with persistent fields
-//	serviceLogger := logger.With(
-//	  "service", "api-gateway",
-//	  "version", "1.2.3",
+//	// Create logger with specific level
+//	debugLog := logger.NewWithLevel(slog.LevelDebug)
+//	debugLog.Debug("Debug information", slog.String("component", "router"))
+//
+//	// Structured logging with context
+//	log.Error("Database connection failed",
+//	    slog.String("database", "users"),
+//	    slog.String("error", err.Error()),
+//	    slog.Duration("timeout", 30*time.Second),
 //	)
 //
-//	// Group related fields
-//	httpLogger := serviceLogger.WithGroup("http")
-//	httpLogger.Info("request received",
-//	  "method", "GET",
-//	  "path", "/api/users",
-//	  "status", 200,
-//	)
+// Integration:
 //
-// # Configuration
+// This logger integrates seamlessly with other components of the API gateway:
 //
-// The logger supports various coniguration options:
+//   - Middleware for request/response logging
+//   - Error handling and panic recovery
+//   - Metrics and monitoring systems
+//   - Distributed tracing (future enhancement)
 //
-//   - Level: debug, info, warn, error
-//   - Format: json, text
-//   - Output: stdout, stderr, or file path
-//   - AddSource: Include source code location (development only)
-//   - TimeFormat: Custom time format for text output
+// Performance:
 //
-// # Performance Considerations
+// The logger is optimized for high-throughput applications:
 //
-// The logger is optimized for performance:
+//   - Zero allocation in the hot path for common cases
+//   - Efficient field encoding and serialization
+//   - Minimal lock contention in concurrent scenarios
+//   - Configurable buffering for batch output
 //
-//   - Uses slog's zero-allocation APIs where possible
-//   - Lazy evaluation of expensive operations
-//   - Efficient JSON encoding
-//   - Minimal memory allocations for hot paths
+// Configuration:
 //
-// For maximum performance in production:
+// Logger behavior can be configured through environment variables:
 //
-//   - Set level to "info" or higher
-//   - Use JSON format for better parsing performance
-//   - Disable AddSource (has significant overhead)
-//   - Use persistent loggers with With() for repeated fields
-//
-// # Error Handling
-//
-// The package defines custom error types for better error handling:
-//
-//	logger, err := logger.New(invalidConfig)
-//	if err != nil {
-//	  var configErr *logger.ConfigError
-//	  if errors.As(err, &configErr) {
-//	    fmt.Printf("Invalid %s: %s\n", configErr.Field, configErr.Value)
-//	  }
-//	}
-//
-// # Best Practices
-//
-//   - Use structured logging with key-value pairs instead of formatted strings
-//   - Include relevant context in log messages (user_id, request_id, etc.)
-//   - Use appropriate log levels (debug for debugging, info for general info, etc.)
-//   - Create service-specific loggers with persistent fields
-//   - Use context-aware logging for request tracing
-//   - Avoid logging sensitive information (passwords, tokens, etc.)
-//   - Use log grouping to organize related fields
-//
-// # Thread Safety
-//
-// All logger implementations are thread-safe and can be used concurrently
-// from multiple goroutines without additional synchronization.
+//	LOG_LEVEL  - Set minimum log level (debug, info, warn, error)
+//	LOG_FORMAT - Set output format (json, text)
+//	LOG_SOURCE - Include source file and line information (true, false)
 package logger
