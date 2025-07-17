@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"prism/internal/loadbalancer"
 	"time"
 
 	"github.com/kelseyhightower/envconfig"
@@ -12,8 +13,9 @@ import (
 
 // Config represents the application configuration
 type Config struct {
-	Server ServerConfig `json:"server" yaml:"server" envconfig:"SERVER"`
-	Routes []Route      `json:"routes" yaml:"routes"`
+	Server       ServerConfig `json:"server" yaml:"server" envconfig:"SERVER"`
+	Routes       []Route      `json:"routes" yaml:"routes"`
+	LoadBalancer *loadbalancer.Config
 }
 
 // ServerConfig holds server-specific configuration
@@ -30,7 +32,8 @@ type Route struct {
 	ID        string `json:"id" yaml:"id"`
 	Path      string `json:"path" yaml:"path"`
 	Method    string `json:"method" yaml:"method"`
-	Target    string `json:"target" yaml:"target"`
+	Target    string `json:"target" yaml:"target"` 
+	Pool      string `json:"pool" yaml:"pool"`     
 	StripPath bool   `json:"strip_path" yaml:"strip_path"`
 }
 
