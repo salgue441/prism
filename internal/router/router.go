@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"prism/internal/config"
+	"prism/internal/proxy"
 	"sync"
 
 	"github.com/gorilla/mux"
@@ -16,6 +17,7 @@ import (
 type Router struct {
 	mux    *mux.Router
 	routes map[string]*Route
+	proxy  *proxy.ReverseProxy
 	logger *slog.Logger
 	mu     sync.RWMutex
 }
@@ -25,6 +27,17 @@ func New(logger *slog.Logger) *Router {
 	return &Router{
 		mux:    mux.NewRouter(),
 		routes: make(map[string]*Route),
+		proxy:  proxy.New(logger),
+		logger: logger,
+	}
+}
+
+// NewWithProxyConfig creates a new router with custom proxy configuration
+func NewWithProxyConfig(logger *slog.Logger, proxyConfig *proxy.Config) *Router {
+	return &Router{
+		mux:    mux.NewRouter(),
+		routes: make(map[string]*Route),
+		proxy:  proxy.NewWithConfig(logger, proxyConfig),
 		logger: logger,
 	}
 }
@@ -41,10 +54,8 @@ func (r *Router) AddRoute(routeConfig config.Route) error {
 		routeID = fmt.Sprintf("%s-%s", routeConfig.Method, routeConfig.Path)
 	}
 
-	handler := func(w http.ResponseWriter, req *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
-	}
+	handler := r.proxy.CreateHandler(targetURL,
+		routeConfig.StripPath, routeConfig.Path)
 
 	route := &Route{
 		ID:        routeID,
@@ -120,6 +131,11 @@ func (r *Router) Handler() http.Handler {
 	return r.mux
 }
 
+// Close gracefully closes the router and its proxy
+func (r *Router) Close() error {
+	return r.proxy.Close()
+}
+
 // Stats
 
 // Stats returns routing statistics
@@ -130,6 +146,7 @@ func (r *Router) Stats() RouterStats {
 	stats := RouterStats{
 		TotalRoutes:    len(r.routes),
 		RoutesByMethod: make(map[string]int),
+		ProxyStats:     r.proxy.GetStats(),
 	}
 
 	for _, route := range r.routes {
@@ -146,6 +163,7 @@ func (r *Router) Stats() RouterStats {
 
 // RouterStats contains routing statistics
 type RouterStats struct {
-	TotalRoutes    int            `json:"total_routes"`
-	RoutesByMethod map[string]int `json:"routes_by_method"`
+	TotalRoutes    int              `json:"total_routes"`
+	RoutesByMethod map[string]int   `json:"routes_by_method"`
+	ProxyStats     proxy.ProxyStats `json:"proxy_stats"`
 }
