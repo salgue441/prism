@@ -1,0 +1,39 @@
+{
+  "server": { "port": 8080 },
+  "load_balancer": {
+    "pools": {
+      "users-pool": {
+        "algorithm": "round_robin",
+        "health_check_enabled": true,
+        "health_interval": "30s",
+        "health_path": "/health",
+        "backends": [
+          { "url": "http://users-1:8080", "weight": 1, "max_connections": 100 },
+          { "url": "http://users-2:8080", "weight": 1, "max_connections": 100 },
+          { "url": "http://users-3:8080", "weight": 2, "max_connections": 200 }
+        ]
+      },
+      "orders-pool": {
+        "algorithm": "least_connections",
+        "backends": [
+          { "url": "http://orders-1:8080", "weight": 1 },
+          { "url": "http://orders-2:8080", "weight": 1 }
+        ]
+      }
+    }
+  },
+  "routes": [
+    {
+      "id": "users-api",
+      "path": "/api/users",
+      "pool": "users-pool",
+      "strip_path": false
+    },
+    {
+      "id": "orders-api",
+      "path": "/api/orders",
+      "pool": "orders-pool",
+      "strip_path": false
+    }
+  ]
+}

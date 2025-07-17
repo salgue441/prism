@@ -1,0 +1,87 @@
+{
+  "server": {
+    "port": 8080,
+    "host": "0.0.0.0"
+  },
+  "load_balancer": {
+    "pools": {
+      "users-pool": {
+        "algorithm": "round_robin",
+        "health_check_enabled": true,
+        "health_interval": "30s",
+        "health_timeout": "5s",
+        "health_path": "/health",
+        "backends": [
+          {
+            "url": "http://localhost:3001",
+            "weight": 1,
+            "max_connections": 100
+          },
+          {
+            "url": "http://localhost:3002",
+            "weight": 2,
+            "max_connections": 150
+          },
+          {
+            "url": "http://localhost:3003",
+            "weight": 1,
+            "max_connections": 100
+          }
+        ]
+      },
+      "orders-pool": {
+        "algorithm": "least_connections",
+        "health_check_enabled": true,
+        "backends": [
+          {
+            "url": "http://localhost:4001",
+            "weight": 1
+          },
+          {
+            "url": "http://localhost:4002",
+            "weight": 1
+          }
+        ]
+      },
+      "products-pool": {
+        "algorithm": "ip_hash",
+        "backends": [
+          {
+            "url": "http://localhost:5001",
+            "weight": 1
+          },
+          {
+            "url": "localhost:5002",
+            "weight": 1
+          }
+        ]
+      }
+    }
+  },
+  "routes": [
+    {
+      "id": "users-api",
+      "path": "/api/users",
+      "pool": "users-pool",
+      "strip_path": false
+    },
+    {
+      "id": "orders-api",
+      "path": "/api/orders",
+      "pool": "orders-pool",
+      "strip_path": false
+    },
+    {
+      "id": "products-api",
+      "path": "/api/products",
+      "pool": "products-pool",
+      "strip_path": false
+    },
+    {
+      "id": "legacy-service",
+      "path": "/legacy",
+      "target": "http://legacy-server:8080",
+      "strip_path": true
+    }
+  ]
+}

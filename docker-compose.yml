@@ -1,128 +1,215 @@
 version: "3.8"
 
 services:
-  # Core Gateway Services
-  gateway:
-    build: .
-    container_name: prism-gateway
+  # API Gateway
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
-      - "8080:8080" # HTTP API
-      - "8443:8443" # HTTPS API
-      - "9090:9090" # Admin/status port
-    volumes:
-      - ./configs:/app/configs
-      - ./docs:/app/docs
+      - "8080:8080"
     environment:
-      - PRISM_ENV=development
-      - PRISM_CONFIG_PAHT=/app/configs/prism.yml
+      - CONFIG_FILE=/configs/docker-config.json
+      - LOG_LEVEL=info
+      - GATEWAY_SERVER_PORT=8080
+      - GATEWAY_SERVER_HOST=0.0.0.0
+    volumes:
+      - ./configs/docker-config.json:/configs/docker-config.json:ro
+      - ./logs:/logs
     depends_on:
-      redis:
-        condition: service_healthy
-      prometheus:
-        condition: service_started
-    restart: unless-stopped
+      - users-service-1
+      - users-service-2
+      - users-service-3
+      - orders-service-1
+      - orders-service-2
+      - products-service
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9090/health"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://localhost:8080/health",
+        ]
       interval: 30s
       timeout: 5s
       retries: 3
-
-  # Redis
-  redis:
-    image: redis:7-alpine
-    container_name: redis-gateway
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-      - ./redis.conf:/usr/local/etc/redis/redis.conf
-    command: redis-server /usr/local/etc/redis/redis.conf
+      start_period: 10s
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+    networks:
+      - api-network
 
-  # Monitoring stack
+  # Users service backends (for load balancing demo)
+  users-service-1:
+    image: httpd:2.4-alpine
+    volumes:
+      - ./mock-services/users-1:/usr/local/apache2/htdocs/:ro
+    environment:
+      - SERVER_NAME=users-service-1
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://localhost/health",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - api-network
+
+  users-service-2:
+    image: httpd:2.4-alpine
+    volumes:
+      - ./mock-services/users-2:/usr/local/apache2/htdocs/:ro
+    environment:
+      - SERVER_NAME=users-service-2
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://localhost/health",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - api-network
+
+  users-service-3:
+    image: httpd:2.4-alpine
+    volumes:
+      - ./mock-services/users-3:/usr/local/apache2/htdocs/:ro
+    environment:
+      - SERVER_NAME=users-service-3
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://localhost/health",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - api-network
+
+  # Orders service backends
+  orders-service-1:
+    image: nginx:alpine
+    volumes:
+      - ./mock-services/orders-1:/usr/share/nginx/html:ro
+      - ./mock-services/nginx.conf:/etc/nginx/nginx.conf:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://localhost/health",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - api-network
+
+  orders-service-2:
+    image: nginx:alpine
+    volumes:
+      - ./mock-services/orders-2:/usr/share/nginx/html:ro
+      - ./mock-services/nginx.conf:/etc/nginx/nginx.conf:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://localhost/health",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - api-network
+
+  # Products service (single instance)
+  products-service:
+    build:
+      context: ./mock-services/products
+      dockerfile: Dockerfile
+    environment:
+      - PORT=8080
+      - SERVICE_NAME=products-service
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://localhost:8080/health",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - api-network
+
+  # Monitoring (optional)
   prometheus:
     image: prom/prometheus:latest
-    container_name: prometheus-monitor
     ports:
-      - "9091:9090"
-    volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
-    restart: unless-stopped
+      - "9090:9090"
+    # volumes:
+    #   - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--web.enable-lifecycle"
+    networks:
+      - api-network
 
   grafana:
-    image: grafana/grafana-enterprise:latest
-    container_name: grafana-dashboard
+    image: grafana/grafana:latest
     ports:
       - "3000:3000"
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./monitoring/dashboards:/etc/grafana/provisioning/dashboards
     environment:
-      - GF_AUTH_ANONYMOUS_ENABLED=true
-      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
-    restart: unless-stopped
-    depends_on:
-      - prometheus
-
-  # Auth Service (For OAuth 2.0/JWT)
-  auth-service:
-    image: oryd/hydra:v2.1.0
-    container_name: oauth-provider
-    ports:
-      - "4444:4444" # Public port
-      - "4445:4445" # Admin port
-    environment:
-      - DSN=memory
-      - URLS_SELF_ISSUER=http://auth-service:4444
-      - URLS_LOGIN=http://localhost:4444/login
-      - URLS_CONSENT=http://localhost:4444/consent
-    restart: unless-stopped
-
-  # Backend services (for development)
-  mock-http-service:
-    image: containous/whoami:latest
-    container_name: mock-http-backend
-    ports:
-      - "8081:80"
-    restart: unless-stopped
-
-  mock-grpc-service:
-    image: ghcr.io/grpc-ecosystem/grpc-health-probe:latest
-    container_name: mock-grpc-backend
-    ports:
-      - "50051:50051"
-    restart: unless-stopped
-
-  # Log management
-  loki:
-    image: grafana/loki:latest
-    container_name: log-aggregator
-    ports:
-      - "3100:3100"
+      - GF_SECURITY_ADMIN_PASSWORD=admin
     volumes:
-      - loki_data:/loki
-    command: -config.file=/etc/loki/local-config.yaml
-    restart: unless-stopped
+      - grafana-storage:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - api-network
 
-  # API Documentation
-  swagger-ui:
-    image: swaggerapi/swagger-ui:latest
-    container_name: api-documentation
-    ports:
-      - "8082:8080"
-    environment:
-      - URLS_PRIMARY_NAME=Gateway API
-      - URLS_PRIMARY_URL=/docs/openapi.yaml
-    volumes:
-      - ./docs/swagger:/usr/share/nginx/html/docs
-    restart: unless-stopped
+networks:
+  api-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
 
 volumes:
-  redis_data:
-  grafana_data:
-  loki_data:
+  grafana-storage:

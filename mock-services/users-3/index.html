@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Users Service 3</title>
+  </head>
+  <body>
+    <h1>Users Service 3 (Higher Weight)</h1>
+    <p>Server: users-service-3</p>
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        if (window.location.pathname.includes("api")) {
+          document.body.innerHTML = JSON.stringify({
+            server: "users-service-3",
+            service: "users",
+            timestamp: new Date().toISOString(),
+            data: [
+              { id: 5, name: "Charlie Davis", email: "charlie@example.com" },
+              { id: 6, name: "Diana Evans", email: "diana@example.com" },
+            ],
+          })
+          document.body.style.fontFamily = "monospace"
+          document.body.style.whiteSpace = "pre"
+        }
+      })
+    </script>
+  </body>
+</html>

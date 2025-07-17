@@ -1,0 +1,305 @@
+version: "3.9"
+
+# Prism Reverse API Gateway - Development Docker Compose
+# Optimized for development with hot reloading and debugging tools
+
+# =============================================================================
+# NETWORKS
+# =============================================================================
+networks:
+  dev-network:
+    driver: bridge
+
+# =============================================================================
+# VOLUMES
+# =============================================================================
+volumes:
+  redis_dev_data:
+    driver: local
+
+# =============================================================================
+# SERVICES
+# =============================================================================
+services:
+  # ==========================================================================
+  # DEVELOPMENT GATEWAY
+  # ==========================================================================
+
+  # Development Gateway with Hot Reload
+  prism-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+      args:
+        BUILD_DATE: ${BUILD_DATE:-}
+        VERSION: ${VERSION:-dev}
+        COMMIT: ${COMMIT:-unknown}
+    container_name: prism-dev
+    restart: unless-stopped
+    ports:
+      - "8080:8080" # API Gateway
+      - "9090:9090" # Admin/Metrics
+      - "6060:6060" # pprof debugging
+      - "40000:40000" # Delve debugger
+    networks:
+      - dev-network
+    environment:
+      - PRISM_SERVER_HOST=0.0.0.0
+      - PRISM_SERVER_PORT=8080
+      - PRISM_REDIS_HOST=redis-dev
+      - PRISM_REDIS_PORT=6379
+      - PRISM_LOGGING_LEVEL=debug
+      - PRISM_LOGGING_FORMAT=text
+      - PRISM_LOGGING_ADD_SOURCE=true
+      - PRISM_MONITORING_METRICS_ENABLED=true
+      - PRISM_ENV=development
+      - CGO_ENABLED=0
+      - GOOS=linux
+      - GOARCH=amd64
+    volumes:
+      - .:/workspace:cached
+      - ./configs:/app/configs
+      - /workspace/bin # Anonymous volume for compiled binaries
+    working_dir: /workspace
+    depends_on:
+      redis-dev:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://localhost:9090/health",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    stdin_open: true
+    tty: true
+
+  # ==========================================================================
+  # DEVELOPMENT DATA LAYER
+  # ==========================================================================
+
+  # Redis for Development
+  redis-dev:
+    image: redis:7.2-alpine
+    container_name: redis-dev
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - dev-network
+    volumes:
+      - redis_dev_data:/data
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --notify-keyspace-events KEA
+      --save 60 100
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ==========================================================================
+  # DEVELOPMENT MONITORING (Lightweight)
+  # ==========================================================================
+
+  # Prometheus (Development)
+  prometheus-dev:
+    image: prom/prometheus:v2.47.0
+    container_name: prometheus-dev
+    restart: unless-stopped
+    ports:
+      - "9091:9090"
+    networks:
+      - dev-network
+    volumes:
+      - ./infrastructure/monitoring/prometheus/prometheus.dev.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=7d"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--web.enable-lifecycle"
+      - "--log.level=warn"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # Grafana (Development)
+  grafana-dev:
+    image: grafana/grafana:10.1.0
+    container_name: grafana-dev
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    networks:
+      - dev-network
+    volumes:
+      - ./infrastructure/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infrastructure/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SECURITY_DISABLE_GRAVATAR=true
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+      - GF_LOG_LEVEL=warn
+      - GF_FEATURE_TOGGLES_ENABLE=publicDashboards
+    depends_on:
+      - prometheus-dev
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  # ==========================================================================
+  # DEVELOPMENT TESTING SERVICES
+  # ==========================================================================
+
+  # Mock HTTP Services
+  httpbin:
+    image: kennethreitz/httpbin:latest
+    container_name: httpbin-dev
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    networks:
+      - dev-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://localhost:80/status/200",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 2
+
+  # WhoAmI Service (for routing tests)
+  whoami:
+    image: traefik/whoami:latest
+    container_name: whoami-dev
+    restart: unless-stopped
+    ports:
+      - "8082:80"
+    networks:
+      - dev-network
+    environment:
+      - WHOAMI_PORT_NUMBER=80
+      - WHOAMI_NAME=whoami-dev
+
+  # JSON Server (Mock REST API)
+  json-server:
+    image: typicode/json-server:latest
+    container_name: json-server-dev
+    restart: unless-stopped
+    ports:
+      - "8083:80"
+    networks:
+      - dev-network
+    volumes:
+      - ./infrastructure/mocks/db.json:/data/db.json:ro
+    command: --watch /data/db.json --host 0.0.0.0 --port 80
+
+  # ==========================================================================
+  # DEVELOPMENT UTILITIES
+  # ==========================================================================
+
+  # Redis Commander (Redis GUI)
+  redis-commander-dev:
+    image: rediscommander/redis-commander:latest
+    container_name: redis-gui-dev
+    restart: unless-stopped
+    ports:
+      - "8084:8081"
+    networks:
+      - dev-network
+    environment:
+      - REDIS_HOSTS=dev:redis-dev:6379
+    depends_on:
+      - redis-dev
+
+  # Mailhog (Email testing)
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: mailhog-dev
+    restart: unless-stopped
+    ports:
+      - "1025:1025" # SMTP
+      - "8085:8025" # Web UI
+    networks:
+      - dev-network
+
+  # Swagger UI (API Documentation)
+  swagger-ui-dev:
+    image: swaggerapi/swagger-ui:v5.4.2
+    container_name: swagger-dev
+    restart: unless-stopped
+    ports:
+      - "8086:8080"
+    networks:
+      - dev-network
+    environment:
+      - SWAGGER_JSON=/docs/openapi.json
+      - PERSIST_AUTHORIZATION=true
+      - DISPLAY_OPERATION_ID=true
+      - DISPLAY_REQUEST_DURATION=true
+      - TRYOUT_ENABLED=true
+    volumes:
+      - ./docs/swagger:/docs:ro
+
+  # ==========================================================================
+  # DEBUGGING AND PROFILING
+  # ==========================================================================
+
+  # Jaeger (Distributed Tracing)
+  jaeger-dev:
+    image: jaegertracing/all-in-one:1.49
+    container_name: jaeger-dev
+    restart: unless-stopped
+    ports:
+      - "16686:16686" # Jaeger UI
+      - "14268:14268" # Jaeger HTTP
+    networks:
+      - dev-network
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+      - LOG_LEVEL=warn
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  # Portainer (Docker Management)
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer-dev
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    networks:
+      - dev-network
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
