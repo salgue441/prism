@@ -37,6 +37,14 @@ type Route struct {
 // Load loads configuration from multiple sources
 func Load() (*Config, error) {
 	cfg := &Config{}
+	cfg.Server = ServerConfig{
+		Port:         8080,
+		Host:         "0.0.0.0",
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
 	if err := envconfig.Process("GATEWAY", cfg); err != nil {
 		return nil, fmt.Errorf("failed to load env config: %w", err)
 	}
@@ -52,12 +60,77 @@ func Load() (*Config, error) {
 		}
 	}
 
-	if err := cfg.validate(); err != nil {
+	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
 
 	return cfg, nil
 }
+
+// Validate validates the configuration
+func (c *Config) Validate() error {
+	if err := c.Server.Validate(); err != nil {
+		return fmt.Errorf("server config invalid: %w", err)
+	}
+
+	routeIDs := make(map[string]bool)
+	for i, route := range c.Routes {
+		if err := route.Validate(); err != nil {
+			return fmt.Errorf("route %d invalid: %w", i, err)
+		}
+
+		if route.ID != "" {
+			if routeIDs[route.ID] {
+				return fmt.Errorf("duplicate route ID: %s", route.ID)
+			}
+
+			routeIDs[route.ID] = true
+		}
+	}
+
+	return nil
+}
+
+// Validate validates server configuration
+func (sc *ServerConfig) Validate() error {
+	if sc.Port <= 0 || sc.Port > 65535 {
+		return fmt.Errorf("invalid port: %d (must be 1-65535)", sc.Port)
+	}
+
+	if sc.ReadTimeout <= 0 {
+		return fmt.Errorf("read_timeout must be positive")
+	}
+
+	if sc.WriteTimeout <= 0 {
+		return fmt.Errorf("write_timeout must be positive")
+	}
+
+	if sc.IdleTimeout <= 0 {
+		return fmt.Errorf("idle_timeout must be positive")
+	}
+
+	return nil
+}
+
+// Validate validates route configuration
+func (r *Route) Validate() error {
+	if r.Path == "" {
+		return fmt.Errorf("path is required")
+	}
+
+	if r.Target == "" {
+		return fmt.Errorf("target is required")
+	}
+
+	if len(r.Target) < 7 ||
+		(r.Target[:7] != "http://" && r.Target[:8] != "https://") {
+		return fmt.Errorf("target must be a valid HTTP/HTTPS URL")
+	}
+
+	return nil
+}
+
+// Private methods
 
 // loadFromFile loads configuration from a JSON or a YAML file.
 func loadFromFile(filename string, cfg *Config) error {
@@ -66,35 +139,15 @@ func loadFromFile(filename string, cfg *Config) error {
 		return err
 	}
 
-	switch {
-	case len(filename) > 5 &&
-		filename[len(filename)-5:] == ".yaml":
-		fallthrough
-
-	case len(filename) > 4 &&
-		filename[len(filename)-4:] == ".yml":
+	if isYAMLFile(filename) {
 		return yaml.Unmarshal(data, cfg)
-
-	default:
-		return json.Unmarshal(data, cfg)
 	}
+
+	return json.Unmarshal(data, cfg)
 }
 
-// validate ensures the configuration is valid
-func (c *Config) validate() error {
-	if c.Server.Port <= 0 || c.Server.Port > 65535 {
-		return fmt.Errorf("invalid port: %d", c.Server.Port)
-	}
-
-	for i, route := range c.Routes {
-		if route.Path == "" {
-			return fmt.Errorf("route %d: path is required", i)
-		}
-
-		if route.Target == "" {
-			return fmt.Errorf("route %d: target is required", i)
-		}
-	}
-
-	return nil
+// isYAMLFile checks if the file is a YAML file based on extension
+func isYAMLFile(filename string) bool {
+	return len(filename) > 5 && filename[len(filename)-5:] == ".yaml" ||
+		len(filename) > 4 && filename[len(filename)-4:] == ".yml"
 }
