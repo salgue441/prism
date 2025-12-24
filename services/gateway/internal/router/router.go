@@ -156,6 +156,75 @@ func (r *Router) GetUpstream(id string) *Upstream {
 	return r.upstreams[id]
 }
 
+// ListUpstreams returns all upstreams.
+func (r *Router) ListUpstreams() map[string]*Upstream {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	result := make(map[string]*Upstream, len(r.upstreams))
+	for k, v := range r.upstreams {
+		result[k] = v
+	}
+	return result
+}
+
+// ReplaceAllRoutes atomically replaces all routes.
+func (r *Router) ReplaceAllRoutes(routes []*Route) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.routes = make([]*Route, 0, len(routes))
+	for _, route := range routes {
+		if route != nil {
+			r.routes = append(r.routes, route)
+		}
+	}
+
+	// Sort by priority (higher priority first)
+	sort.Slice(r.routes, func(i, j int) bool {
+		return r.routes[i].Priority > r.routes[j].Priority
+	})
+}
+
+// ReplaceAllUpstreams atomically replaces all upstreams.
+func (r *Router) ReplaceAllUpstreams(upstreams []*Upstream) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.upstreams = make(map[string]*Upstream, len(upstreams))
+	for _, upstream := range upstreams {
+		if upstream == nil {
+			continue
+		}
+
+		// Create load balancer for upstream
+		targets := make([]*proxy.Target, len(upstream.Targets))
+		for i, t := range upstream.Targets {
+			targets[i] = &proxy.Target{
+				URL:    t.URL,
+				Weight: t.Weight,
+			}
+		}
+		upstream.lb = proxy.NewLoadBalancer(targets, proxy.RoundRobin)
+
+		r.upstreams[upstream.ID] = upstream
+	}
+}
+
+// RouteCount returns the number of routes.
+func (r *Router) RouteCount() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.routes)
+}
+
+// UpstreamCount returns the number of upstreams.
+func (r *Router) UpstreamCount() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.upstreams)
+}
+
 // Match finds the best matching route for a request.
 func (r *Router) Match(req *http.Request) (*Route, error) {
 	r.mu.RLock()

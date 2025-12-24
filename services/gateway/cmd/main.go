@@ -14,6 +14,7 @@ import (
 
 	"github.com/carlossalguero/prism/services/gateway/internal/auth"
 	"github.com/carlossalguero/prism/services/gateway/internal/circuitbreaker"
+	"github.com/carlossalguero/prism/services/gateway/internal/config"
 	"github.com/carlossalguero/prism/services/gateway/internal/middleware"
 	"github.com/carlossalguero/prism/services/gateway/internal/proxy"
 	"github.com/carlossalguero/prism/services/gateway/internal/router"
@@ -86,6 +87,13 @@ type Config struct {
 		SampleRate float64 `mapstructure:"sample_rate"`
 		Insecure   bool    `mapstructure:"insecure"`
 	} `mapstructure:"tracing"`
+
+	ConfigService struct {
+		GRPCAddress   string        `mapstructure:"grpc_address"`
+		Timeout       time.Duration `mapstructure:"timeout"`
+		RetryInterval time.Duration `mapstructure:"retry_interval"`
+		MaxRetries    int           `mapstructure:"max_retries"`
+	} `mapstructure:"config_service"`
 }
 
 func main() {
@@ -236,6 +244,44 @@ func main() {
 	// Initialize router
 	rtr := router.New()
 
+	// Initialize dynamic rate limit manager
+	rateLimitMgr := config.NewRateLimitManager(log)
+	rateLimitMgr.SetMetrics(metricsInstance)
+
+	// Initialize config manager (if Config Service is configured)
+	var configMgr *config.Manager
+	if cfg.ConfigService.GRPCAddress != "" {
+		configMgr = config.NewManager(config.ManagerConfig{
+			Client: config.ClientConfig{
+				Address:       cfg.ConfigService.GRPCAddress,
+				Timeout:       cfg.ConfigService.Timeout,
+				RetryInterval: cfg.ConfigService.RetryInterval,
+				MaxRetries:    cfg.ConfigService.MaxRetries,
+			},
+			Router:      rtr,
+			RateLimiter: rateLimitMgr,
+			Events:      eventsClient,
+			Logger:      log,
+		})
+
+		// Start config manager (connects and loads initial config)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if err := configMgr.Start(ctx); err != nil {
+			log.Warn("failed to start config manager, continuing without dynamic config", "error", err)
+			configMgr = nil
+		} else {
+			log.Info("config manager started",
+				"routes", rtr.RouteCount(),
+				"upstreams", rtr.UpstreamCount(),
+				"rate_limit_rules", rateLimitMgr.RuleCount(),
+			)
+
+			// Start watching for config updates
+			configMgr.StartWatching(context.Background())
+		}
+		cancel()
+	}
+
 	// Initialize proxy with circuit breaker
 	prx := proxy.New(proxy.Config{
 		Transport: &http.Transport{
@@ -267,12 +313,31 @@ func main() {
 	}
 
 	// Add rate limiting middleware
-	rateLimiter := middleware.NewRateLimiter(
-		cfg.RateLimit.RequestsPerSecond,
-		cfg.RateLimit.BurstSize,
-	)
-	rateLimiter.SetMetrics(metricsInstance)
-	handler = rateLimiter.Middleware(handler)
+	// Use dynamic rate limiter if config manager is available, otherwise fall back to static
+	if configMgr != nil {
+		// Dynamic rate limiting based on route configuration
+		getRuleID := func(r *http.Request) string {
+			if route := router.GetRouteFromContext(r.Context()); route != nil {
+				return route.RateLimitKey
+			}
+			return ""
+		}
+		getUserID := func(r *http.Request) string {
+			if userInfo := middleware.GetUserInfo(r.Context()); userInfo != nil {
+				return userInfo.ID
+			}
+			return ""
+		}
+		handler = rateLimitMgr.Middleware(getRuleID, getUserID)(handler)
+	} else {
+		// Fallback to static rate limiter
+		rateLimiter := middleware.NewRateLimiter(
+			cfg.RateLimit.RequestsPerSecond,
+			cfg.RateLimit.BurstSize,
+		)
+		rateLimiter.SetMetrics(metricsInstance)
+		handler = rateLimiter.Middleware(handler)
+	}
 
 	// Add metrics middleware
 	handler = metricsInstance.HTTPMiddleware(handler)
@@ -356,11 +421,35 @@ func main() {
 		}
 	}()
 
-	// Wait for shutdown signal
+	// Wait for shutdown signal or SIGHUP for reload
 	quit := make(chan os.Signal, 1)
+	reload := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	signal.Notify(reload, syscall.SIGHUP)
 
+	// Handle signals
+	for {
+		select {
+		case <-reload:
+			if configMgr != nil {
+				log.Info("received SIGHUP, triggering config reload")
+				if err := configMgr.TriggerReload(context.Background()); err != nil {
+					log.Error("config reload failed", "error", err)
+				} else {
+					log.Info("config reload completed",
+						"routes", rtr.RouteCount(),
+						"upstreams", rtr.UpstreamCount(),
+					)
+				}
+			} else {
+				log.Warn("received SIGHUP but config manager is not running")
+			}
+		case <-quit:
+			goto shutdown
+		}
+	}
+
+shutdown:
 	log.Info("shutting down server...")
 
 	// Create shutdown context with timeout
@@ -393,6 +482,13 @@ func main() {
 	// Close NATS connection
 	if eventsClient != nil {
 		eventsClient.Close()
+	}
+
+	// Stop config manager
+	if configMgr != nil {
+		if err := configMgr.Stop(); err != nil {
+			log.Error("config manager stop error", "error", err)
+		}
 	}
 
 	// Shutdown tracing
@@ -450,6 +546,12 @@ func loadConfig() (*Config, error) {
 	viper.SetDefault("tracing.endpoint", "localhost:4317")
 	viper.SetDefault("tracing.sample_rate", 1.0)
 	viper.SetDefault("tracing.insecure", true)
+
+	// Config service defaults
+	viper.SetDefault("config_service.grpc_address", "")
+	viper.SetDefault("config_service.timeout", "5s")
+	viper.SetDefault("config_service.retry_interval", "2s")
+	viper.SetDefault("config_service.max_retries", 10)
 
 	// Bind environment variables
 	viper.SetEnvPrefix("GATEWAY")

@@ -14,7 +14,16 @@ auth:
   grpc_address: localhost:50051
   timeout: 5s
 
-# Rate limiting
+# Config service connection (for dynamic configuration)
+# When enabled, routes and rate limits are loaded from the Config service
+# and can be updated at runtime without restarting the gateway
+config_service:
+  grpc_address: localhost:50052
+  timeout: 5s
+  retry_interval: 2s
+  max_retries: 10
+
+# Rate limiting (fallback when Config service is not available)
 rate_limit:
   requests_per_second: 100
   burst_size: 200
