@@ -4,159 +4,267 @@ This guide covers deploying Prism to various environments.
 
 ## Prerequisites
 
-- Docker and Docker Compose
-- PostgreSQL 14+
-- Consul (for Config service)
+- Docker and Docker Compose v2+
+- Go 1.23+ (for local development)
+- Make
 - RSA key pair for JWT signing
 
-## Docker Deployment
-
-### Building Images
+## Quick Start (Development)
 
 ```bash
-# Build all service images
-make docker-build
+# Run automated development setup
+make dev-setup
 
-# Or build individually
-docker build -t prism-gateway -f deploy/docker/gateway.Dockerfile .
-docker build -t prism-auth -f deploy/docker/auth.Dockerfile .
-docker build -t prism-config -f deploy/docker/config.Dockerfile .
+# This will:
+# 1. Check prerequisites
+# 2. Create .env from .env.example with generated passwords
+# 3. Generate JWT RSA keys
+# 4. Start infrastructure services
+# 5. Run database migrations
+# 6. Build services
 ```
 
-### Docker Compose
+## Docker Compose Architecture
 
-```yaml
-# docker-compose.yml
-version: '3.8'
+Prism uses a modular Docker Compose architecture with separate files for different concerns:
 
-services:
-  gateway:
-    image: prism-gateway:latest
-    ports:
-      - "8080:8080"
-      - "9080:9080"  # Health/metrics
-    environment:
-      - PRISM_AUTH_GRPC_ADDRESS=auth:50051
-      - PRISM_CONFIG_GRPC_ADDRESS=config:50052
-      - PRISM_LOG_LEVEL=info
-    depends_on:
-      - auth
-      - config
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9080/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
-  auth:
-    image: prism-auth:latest
-    ports:
-      - "50051:50051"
-      - "8081:8081"
-      - "9081:9081"
-    environment:
-      - PRISM_DB_HOST=postgres
-      - PRISM_DB_PASSWORD=${DB_PASSWORD}
-      - PRISM_JWT_PRIVATE_KEY_PATH=/keys/private.pem
-      - PRISM_JWT_PUBLIC_KEY_PATH=/keys/public.pem
-    volumes:
-      - ./keys:/keys:ro
-    depends_on:
-      - postgres
-    healthcheck:
-      test: ["CMD", "grpc_health_probe", "-addr=:50051"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
-  config:
-    image: prism-config:latest
-    ports:
-      - "50052:50052"
-      - "9052:9052"
-    environment:
-      - PRISM_CONSUL_ADDRESS=consul:8500
-    depends_on:
-      - consul
-    healthcheck:
-      test: ["CMD", "grpc_health_probe", "-addr=:50052"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      - POSTGRES_DB=prism
-      - POSTGRES_USER=prism
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U prism"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  consul:
-    image: consul:1.15
-    ports:
-      - "8500:8500"
-    command: agent -dev -client=0.0.0.0
-    healthcheck:
-      test: ["CMD", "consul", "members"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
-  prometheus:
-    image: prom/prometheus:v2.48.0
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus_data:/prometheus
-
-  grafana:
-    image: grafana/grafana:10.2.0
-    ports:
-      - "3000:3000"
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-    volumes:
-      - ./deploy/grafana/provisioning:/etc/grafana/provisioning
-      - grafana_data:/var/lib/grafana
-
-  loki:
-    image: grafana/loki:2.9.0
-    ports:
-      - "3100:3100"
-    command: -config.file=/etc/loki/local-config.yaml
-
-volumes:
-  postgres_data:
-  prometheus_data:
-  grafana_data:
+```
+deploy/docker-compose/
+├── docker-compose.yml              # Core services (gateway, auth, config, dbmanager)
+├── docker-compose.infra.yml        # Infrastructure (PostgreSQL, Redis, NATS, Consul, MinIO)
+├── docker-compose.observability.yml # Monitoring (Prometheus, Jaeger, Loki, Grafana)
+└── .env.example                    # Environment template
 ```
 
-### Running
+### Network Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        prism-frontend                           │
+│  (External-facing: Traefik, Gateway)                           │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+┌─────────────────────────────────────────────────────────────────┐
+│                        prism-backend                            │
+│  (Internal services: Auth, Config, Gateway)                    │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+┌─────────────────────────────────────────────────────────────────┐
+│                         prism-data                              │
+│  (Data layer: PostgreSQL, Redis, NATS, Consul - isolated)      │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+┌─────────────────────────────────────────────────────────────────┐
+│                     prism-observability                         │
+│  (Monitoring: Prometheus, Jaeger, Loki, Grafana)               │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Environment Configuration
+
+### Creating Environment File
 
 ```bash
-# Generate JWT keys
+# Copy template
+cp deploy/docker-compose/.env.example deploy/docker-compose/.env
+
+# Edit with your values
+vim deploy/docker-compose/.env
+```
+
+### Required Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `POSTGRES_AUTH_PASSWORD` | Auth database password |
+| `POSTGRES_OPS_PASSWORD` | Operational database password |
+| `REDIS_PASSWORD` | Redis authentication password |
+| `MINIO_ROOT_PASSWORD` | MinIO admin password |
+| `GRAFANA_ADMIN_PASSWORD` | Grafana admin password |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth secret |
+| `GITHUB_CLIENT_ID` | GitHub OAuth client ID |
+| `GITHUB_CLIENT_SECRET` | GitHub OAuth secret |
+
+### Generate JWT Keys
+
+```bash
 make generate-keys
-
-# Start all services
-docker-compose up -d
-
-# Check status
-docker-compose ps
-
-# View logs
-docker-compose logs -f gateway
-
-# Stop all services
-docker-compose down
+# Creates keys/private.pem and keys/public.pem
 ```
+
+## Docker Compose Commands
+
+### Start Services
+
+```bash
+# Infrastructure only (databases, cache, messaging)
+make docker-infra-up
+
+# Observability stack (monitoring, logging, tracing)
+make docker-obs-up
+
+# Core services (gateway, auth, config, dbmanager)
+make docker-up
+
+# Everything at once
+make docker-full-up
+```
+
+### Stop Services
+
+```bash
+make docker-infra-down
+make docker-obs-down
+make docker-down
+make docker-full-down
+```
+
+### View Logs
+
+```bash
+# Specific service
+make docker-logs service=gateway
+make docker-logs service=auth
+
+# All services
+docker compose -f deploy/docker-compose/docker-compose.yml logs -f
+```
+
+### Clean Up
+
+```bash
+# Stop and remove volumes
+make docker-clean
+```
+
+## Infrastructure Components
+
+### Dual PostgreSQL Databases
+
+| Database | Port | Purpose |
+|----------|------|---------|
+| postgres-auth | 5432 | Users, sessions, API keys, OAuth |
+| postgres-ops | 5433 | Audit logs, events, metrics, backups |
+
+```bash
+# Connect to auth database
+docker exec -it postgres-auth psql -U prism -d prism_auth
+
+# Connect to ops database
+docker exec -it postgres-ops psql -U prism -d prism_ops
+```
+
+### Redis Cache
+
+- **Port:** 6379
+- **Features:** Token caching, rate limiting, sessions, distributed locks
+- **Configuration:** `deploy/redis/redis.conf`
+
+```bash
+# Connect to Redis
+docker exec -it redis redis-cli -a $REDIS_PASSWORD
+```
+
+### NATS Message Queue
+
+- **Port:** 4222 (clients), 8222 (monitoring)
+- **Features:** JetStream enabled, event streaming
+- **Configuration:** `deploy/nats/nats-server.conf`
+
+Topics:
+- `prism.auth.user.>` - User events
+- `prism.auth.token.>` - Token events
+- `prism.gateway.request.>` - Request events
+- `prism.system.>` - System events
+
+### Consul Service Discovery
+
+- **Port:** 8500
+- **Features:** Service registration, key-value store, health checks
+
+### MinIO (S3-Compatible Storage)
+
+- **Port:** 9000 (API), 9001 (Console)
+- **Features:** Backup storage, WAL archiving
+- **Buckets:** `prism-backups`
+
+## Database Operations
+
+### Migrations
+
+Migrations are managed by the DB Manager service:
+
+```bash
+# Migrations run automatically on startup
+# Or trigger manually via gRPC API
+
+# Using psql directly (development)
+docker exec -it postgres-auth psql -U prism -d prism_auth \
+  -f /migrations/001_initial_schema.sql
+```
+
+### Backups
+
+```bash
+# Create full backup of all databases
+make backup-all
+
+# Backup specific database
+make backup-auth
+make backup-ops
+
+# List available backups
+make backup-list
+```
+
+#### Backup Types
+
+| Type | Command | Description |
+|------|---------|-------------|
+| Full | `./deploy/backup/backup.sh auth full` | Complete pg_basebackup |
+| Delta | `./deploy/backup/backup.sh auth delta` | WAL-G delta backup |
+| WAL | `./deploy/backup/backup.sh auth wal` | Archive WAL files |
+
+#### Restore
+
+```bash
+# Restore with dry-run first
+./deploy/backup/restore.sh auth FULL_BACKUP_NAME --dry-run
+
+# Actual restore
+./deploy/backup/restore.sh auth FULL_BACKUP_NAME
+```
+
+## Traefik Load Balancer
+
+### Development Mode
+
+```bash
+# Start with Traefik
+docker compose -f deploy/docker-compose/docker-compose.yml \
+  -f deploy/traefik/docker-compose.traefik.yml up -d
+```
+
+### Configuration
+
+- **Static config:** `deploy/traefik/traefik.yml` (production) or `traefik.dev.yml` (development)
+- **Dynamic config:** `deploy/traefik/dynamic/`
+
+### Features
+
+- Rate limiting at edge
+- TLS termination (Let's Encrypt in production)
+- Health check integration
+- Circuit breaker middleware
+
+### Access Points with Traefik
+
+| Path | Service |
+|------|---------|
+| `/api/*` | Gateway |
+| `/auth/*` | Auth HTTP |
+| `/health`, `/ready`, `/live` | Gateway health |
 
 ## Kubernetes Deployment
 
@@ -196,7 +304,9 @@ metadata:
   namespace: prism
 type: Opaque
 data:
-  db-password: <base64-encoded>
+  postgres-auth-password: <base64-encoded>
+  postgres-ops-password: <base64-encoded>
+  redis-password: <base64-encoded>
   jwt-private-key: <base64-encoded>
   jwt-public-key: <base64-encoded>
 ```
@@ -235,6 +345,13 @@ spec:
               value: "auth:50051"
             - name: PRISM_CONFIG_GRPC_ADDRESS
               value: "config:50052"
+            - name: PRISM_REDIS_ADDRESS
+              value: "redis:6379"
+            - name: PRISM_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: prism-secrets
+                  key: redis-password
           resources:
             requests:
               cpu: "100m"
@@ -254,13 +371,6 @@ spec:
               port: 9080
             initialDelaySeconds: 5
             periodSeconds: 5
-          volumeMounts:
-            - name: config
-              mountPath: /etc/prism
-      volumes:
-        - name: config
-          configMap:
-            name: gateway-config
 ---
 apiVersion: v1
 kind: Service
@@ -279,81 +389,31 @@ spec:
       name: metrics
 ```
 
-### Auth Deployment
+### Horizontal Pod Autoscaler
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
 metadata:
-  name: auth
+  name: gateway-hpa
   namespace: prism
 spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: auth
-  template:
-    metadata:
-      labels:
-        app: auth
-    spec:
-      containers:
-        - name: auth
-          image: prism-auth:latest
-          ports:
-            - containerPort: 50051
-              name: grpc
-            - containerPort: 8081
-              name: http
-            - containerPort: 9081
-              name: metrics
-          env:
-            - name: PRISM_DB_HOST
-              value: "postgres"
-            - name: PRISM_DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: prism-secrets
-                  key: db-password
-          volumeMounts:
-            - name: jwt-keys
-              mountPath: /keys
-              readOnly: true
-          resources:
-            requests:
-              cpu: "100m"
-              memory: "128Mi"
-            limits:
-              cpu: "500m"
-              memory: "256Mi"
-      volumes:
-        - name: jwt-keys
-          secret:
-            secretName: prism-secrets
-            items:
-              - key: jwt-private-key
-                path: private.pem
-              - key: jwt-public-key
-                path: public.pem
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: auth
-  namespace: prism
-spec:
-  selector:
-    app: auth
-  ports:
-    - port: 50051
-      targetPort: 50051
-      name: grpc
-    - port: 8081
-      targetPort: 8081
-      name: http
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: gateway
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
 ```
 
-### Ingress
+### Ingress with TLS
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -382,79 +442,20 @@ spec:
                   number: 8080
 ```
 
-### Horizontal Pod Autoscaler
-
-```yaml
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: gateway-hpa
-  namespace: prism
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: gateway
-  minReplicas: 3
-  maxReplicas: 10
-  metrics:
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: 70
-    - type: Resource
-      resource:
-        name: memory
-        target:
-          type: Utilization
-          averageUtilization: 80
-```
-
-## Database Migrations
-
-### Running Migrations
-
-```bash
-# Using make
-make migrate-up
-
-# Using migrate CLI
-migrate -path migrations -database "postgres://user:pass@host:5432/prism?sslmode=disable" up
-
-# In Kubernetes
-kubectl exec -it deploy/auth -n prism -- /app/migrate -path /migrations up
-```
-
-### Rollback
-
-```bash
-# Rollback one migration
-make migrate-down
-
-# Rollback to specific version
-migrate -path migrations -database "..." goto 3
-```
-
 ## TLS Configuration
 
-### Generate Certificates
+### Generate Self-Signed Certificates (Development)
 
 ```bash
-# Development (self-signed)
 openssl req -x509 -newkey rsa:4096 \
   -keyout key.pem -out cert.pem \
   -days 365 -nodes \
   -subj "/CN=localhost"
-
-# Production - use cert-manager or similar
 ```
 
-### Enable TLS
+### Enable TLS in Gateway
 
 ```yaml
-# Gateway config
 tls:
   enabled: true
   cert_file: "/certs/tls.crt"
@@ -465,7 +466,6 @@ tls:
 ### mTLS Between Services
 
 ```yaml
-# Enable client certificate validation
 tls:
   enabled: true
   client_auth: true
@@ -478,10 +478,12 @@ tls:
 
 - [ ] TLS enabled on all endpoints
 - [ ] JWT keys rotated and secured
-- [ ] Database credentials in secrets
+- [ ] Database credentials in secrets management
+- [ ] Redis password configured
 - [ ] Network policies configured
-- [ ] Rate limiting enabled
+- [ ] Rate limiting enabled at Traefik and Gateway
 - [ ] OAuth secrets secured
+- [ ] MinIO access policies configured
 
 ### Reliability
 
@@ -491,19 +493,22 @@ tls:
 - [ ] PodDisruptionBudget configured
 - [ ] Circuit breakers enabled
 - [ ] Proper timeouts configured
+- [ ] NATS JetStream configured for durability
 
 ### Observability
 
 - [ ] Prometheus scraping enabled
 - [ ] Grafana dashboards imported
-- [ ] Log aggregation configured
+- [ ] Loki log aggregation configured
+- [ ] Jaeger tracing enabled
 - [ ] Alerting rules set up
-- [ ] Request tracing enabled
+- [ ] Request tracing with correlation IDs
 
 ### Operations
 
-- [ ] Backup strategy for PostgreSQL
-- [ ] Disaster recovery plan
+- [ ] Automated backup schedule configured
+- [ ] Backup verification process
+- [ ] Disaster recovery plan documented
 - [ ] Runbook documentation
 - [ ] On-call rotation set up
 - [ ] Incident response process
@@ -514,20 +519,46 @@ tls:
 
 ```bash
 # Check logs
-kubectl logs -f deploy/gateway -n prism
+docker compose -f deploy/docker-compose/docker-compose.yml logs gateway
 
-# Check events
-kubectl describe pod gateway-xxx -n prism
+# Check container status
+docker ps -a
+
+# Check resource usage
+docker stats
 ```
 
 ### Database Connection Issues
 
 ```bash
 # Test connectivity
-kubectl exec -it deploy/auth -n prism -- nc -zv postgres 5432
+docker exec -it gateway nc -zv postgres-auth 5432
 
-# Check credentials
-kubectl get secret prism-secrets -n prism -o yaml
+# Check PostgreSQL logs
+docker logs postgres-auth
+
+# Verify credentials
+docker exec -it postgres-auth psql -U prism -d prism_auth -c "SELECT 1"
+```
+
+### Redis Connection Issues
+
+```bash
+# Test connection
+docker exec -it redis redis-cli -a $REDIS_PASSWORD ping
+
+# Check memory usage
+docker exec -it redis redis-cli -a $REDIS_PASSWORD info memory
+```
+
+### NATS Connection Issues
+
+```bash
+# Check NATS monitoring
+curl http://localhost:8222/varz
+
+# View JetStream info
+curl http://localhost:8222/jsz
 ```
 
 ### gRPC Connection Issues
@@ -536,14 +567,15 @@ kubectl get secret prism-secrets -n prism -o yaml
 # Test gRPC health
 grpcurl -plaintext auth:50051 grpc.health.v1.Health/Check
 
-# Check service discovery
-kubectl get endpoints -n prism
+# Check service endpoints
+docker compose ps
 ```
 
 ### High Latency
 
-1. Check circuit breaker states
-2. Review upstream health
-3. Analyze Prometheus metrics
-4. Check resource utilization
+1. Check circuit breaker states in Prometheus
+2. Review upstream health checks
+3. Analyze request traces in Jaeger
+4. Check Redis cache hit rates
 5. Review rate limiting configuration
+6. Check database connection pool stats

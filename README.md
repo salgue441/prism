@@ -27,19 +27,22 @@
 | Category | Features |
 |----------|----------|
 | **Routing** | Dynamic routing, path rewriting, load balancing (round-robin, weighted, least-conn) |
-| **Security** | JWT (RS256), OAuth 2.0 (Google, GitHub), API keys, TLS/HTTPS |
+| **Security** | JWT (RS256), OAuth 2.0 (Google, GitHub), API keys, TLS/HTTPS, mTLS |
 | **Resilience** | Circuit breaker, rate limiting (token bucket), request timeouts, retries |
-| **Observability** | Prometheus metrics, structured logging (Loki), Grafana dashboards |
-| **Operations** | Health checks, graceful shutdown, hot-reload config, Docker support |
+| **Observability** | Prometheus metrics, Jaeger tracing, structured logging (Loki), Grafana dashboards |
+| **Infrastructure** | Dual PostgreSQL, Redis caching, NATS messaging, Consul service discovery |
+| **Operations** | Health checks, graceful shutdown, automated backups, DB migrations |
 
 ## Architecture
 
 ```mermaid
 flowchart TB
-    subgraph Clients
-        Web[Web App]
-        Mobile[Mobile App]
-        Service[Service]
+    subgraph External
+        Client[Clients]
+    end
+
+    subgraph LoadBalancer["Load Balancer"]
+        Traefik[Traefik]
     end
 
     subgraph Gateway["Prism Gateway :8080"]
@@ -50,47 +53,52 @@ flowchart TB
     end
 
     subgraph Services
-        Auth["Auth Service\n:50051 gRPC"]
+        Auth["Auth Service\n:50051 gRPC\n:8081 HTTP"]
         Config["Config Service\n:50052 gRPC"]
+        DBMgr["DB Manager\n:50053 gRPC"]
     end
 
-    subgraph Storage
-        PG[(PostgreSQL)]
-        Consul[(Consul)]
+    subgraph Data["Data Layer"]
+        PGAuth[(PostgreSQL\nAuth DB)]
+        PGOps[(PostgreSQL\nOps DB)]
+        Redis[(Redis\nCache)]
+        NATS[NATS\nMessaging]
+        Consul[(Consul\nDiscovery)]
     end
 
     subgraph Observability
         Prom[Prometheus]
+        Jaeger[Jaeger]
         Loki[Loki]
         Graf[Grafana]
     end
 
-    subgraph Upstreams
-        API1[API Server 1]
-        API2[API Server 2]
-        API3[API Server 3]
+    subgraph Storage["Backup Storage"]
+        MinIO[(MinIO/S3)]
     end
 
-    Web --> MW
-    Mobile --> MW
-    Service --> MW
-
+    Client --> Traefik
+    Traefik --> MW
     MW --> RT
     RT --> LB
     LB --> CB
-    CB --> API1
-    CB --> API2
-    CB --> API3
 
     MW -.->|validate| Auth
     RT -.->|routes| Config
 
-    Auth --> PG
+    Auth --> PGAuth
+    Auth --> Redis
+    Auth --> NATS
+    DBMgr --> PGAuth
+    DBMgr --> PGOps
+    DBMgr --> MinIO
     Config --> Consul
 
     Gateway -.->|metrics| Prom
+    Gateway -.->|traces| Jaeger
     Gateway -.->|logs| Loki
     Prom --> Graf
+    Jaeger --> Graf
     Loki --> Graf
 ```
 
@@ -99,32 +107,23 @@ flowchart TB
 ```mermaid
 sequenceDiagram
     participant C as Client
+    participant T as Traefik
     participant G as Gateway
     participant A as Auth Service
     participant U as Upstream
 
-    C->>G: HTTP Request + JWT
-    G->>G: Rate Limit Check
+    C->>T: HTTPS Request
+    T->>T: Rate Limit Check
+    T->>G: Forward Request
+    G->>G: Middleware Chain
     G->>A: Validate Token (gRPC)
     A-->>G: Token Claims
     G->>G: Route Matching
     G->>G: Circuit Breaker Check
     G->>U: Proxy Request
     U-->>G: Response
-    G-->>C: Response + Headers
-```
-
-### Middleware Chain
-
-```mermaid
-flowchart LR
-    A[Request ID] --> B[Logging]
-    B --> C[Recovery]
-    C --> D[Metrics]
-    D --> E[Rate Limit]
-    E --> F[Auth]
-    F --> G[CORS]
-    G --> H[Proxy]
+    G-->>T: Response
+    T-->>C: Response + Headers
 ```
 
 ## Quick Start
@@ -135,35 +134,40 @@ flowchart LR
 - Docker & Docker Compose
 - Make
 
-### Run with Docker
+### Development Setup (Recommended)
 
 ```bash
-# Clone and start
+# Clone the repository
 git clone https://github.com/carlossalguero/prism.git
 cd prism
 
-# Generate JWT keys
+# Run the development setup script
+# This will: generate keys, create .env, start infrastructure, run migrations
+make dev-setup
+```
+
+### Manual Setup
+
+```bash
+# 1. Copy and configure environment
+cp deploy/docker-compose/.env.example deploy/docker-compose/.env
+# Edit .env with your passwords
+
+# 2. Generate JWT keys
 make generate-keys
 
-# Start all services
+# 3. Start infrastructure (PostgreSQL, Redis, NATS, Consul, MinIO)
+make docker-infra-up
+
+# 4. Start observability stack (Prometheus, Jaeger, Loki, Grafana)
+make docker-obs-up
+
+# 5. Build and start core services
+make build
 make docker-up
 
 # Verify
 curl http://localhost:8080/health
-```
-
-### Run Locally
-
-```bash
-# Start infrastructure
-make docker-up
-
-# Build services
-make build
-
-# Run (in separate terminals)
-./bin/auth
-./bin/gateway
 ```
 
 ### Access Points
@@ -172,9 +176,38 @@ make build
 |---------|-----|-------------|
 | Gateway | `http://localhost:8080` | API Gateway |
 | Auth HTTP | `http://localhost:8081` | OAuth callbacks |
-| Grafana | `http://localhost:3000` | Dashboards (admin/admin) |
-| Consul | `http://localhost:8500` | Service discovery |
+| Grafana | `http://localhost:3000` | Dashboards |
 | Prometheus | `http://localhost:9090` | Metrics |
+| Jaeger | `http://localhost:16686` | Distributed Tracing |
+| Consul | `http://localhost:8500` | Service Discovery |
+| MinIO Console | `http://localhost:9001` | Backup Storage |
+| NATS Monitoring | `http://localhost:8222` | Message Queue |
+
+## Docker Compose Commands
+
+```bash
+# Infrastructure only (databases, cache, messaging)
+make docker-infra-up
+make docker-infra-down
+
+# Observability stack (monitoring, logging, tracing)
+make docker-obs-up
+make docker-obs-down
+
+# Core services (gateway, auth, config)
+make docker-up
+make docker-down
+
+# Everything at once
+make docker-full-up
+make docker-full-down
+
+# View logs
+make docker-logs service=gateway
+
+# Clean up (removes volumes)
+make docker-clean
+```
 
 ## Usage
 
@@ -204,6 +237,16 @@ curl http://localhost:8080/api/v1/resource \
   -H "X-API-Key: prism_abc123..."
 ```
 
+### Database Operations
+
+```bash
+# Create backup
+make backup-all
+
+# List backups
+make backup-list
+```
+
 ## Project Structure
 
 ```
@@ -218,16 +261,34 @@ prism/
 │   ├── config/           # Configuration Service
 │   │   ├── cmd/          # Entrypoint
 │   │   └── internal/     # Consul client, service, server
+│   ├── dbmanager/        # Database Management Service
+│   │   ├── cmd/          # Entrypoint
+│   │   └── internal/     # Migration, backup, health, scheduler
 │   └── shared/           # Shared Libraries
-│       ├── errors/       # Error types with HTTP/gRPC mapping
+│       ├── cache/        # Redis client wrapper
+│       ├── events/       # NATS client wrapper
+│       ├── tracing/      # OpenTelemetry setup
+│       ├── errors/       # Error types
 │       ├── health/       # Health check infrastructure
 │       ├── logger/       # Structured logging (slog)
 │       ├── metrics/      # Prometheus metrics
 │       ├── tls/          # TLS configuration
 │       └── proto/        # Protocol Buffers
 ├── configs/              # YAML configuration files
-├── migrations/           # Database migrations
-├── deploy/               # Docker, docker-compose, observability
+├── migrations/
+│   ├── auth/             # Auth database migrations
+│   └── ops/              # Operational database migrations
+├── deploy/
+│   ├── docker/           # Dockerfiles
+│   ├── docker-compose/   # Compose files (modular)
+│   ├── traefik/          # Load balancer config
+│   ├── redis/            # Redis configuration
+│   ├── nats/             # NATS configuration
+│   ├── postgres/         # PostgreSQL init scripts
+│   ├── backup/           # Backup scripts & WAL-G config
+│   ├── minio/            # MinIO policies
+│   └── observability/    # Prometheus, Jaeger, Loki, Grafana
+├── scripts/              # Development scripts
 └── docs/guides/          # Documentation
 ```
 
@@ -250,7 +311,24 @@ make test-coverage   # Generate coverage report
 make lint            # Run linter
 make proto           # Generate protobuf code
 make fmt             # Format code
+make dev             # Start infra and run services locally
 ```
+
+## Infrastructure Components
+
+| Component | Purpose | Port(s) |
+|-----------|---------|---------|
+| PostgreSQL (Auth) | User data, sessions, API keys | 5432 |
+| PostgreSQL (Ops) | Audit logs, metrics, backups | 5433 |
+| Redis | Caching, rate limiting, sessions | 6379 |
+| NATS | Event messaging, async processing | 4222 |
+| Consul | Service discovery, configuration | 8500 |
+| MinIO | S3-compatible backup storage | 9000, 9001 |
+| Prometheus | Metrics collection | 9090 |
+| Jaeger | Distributed tracing | 16686 |
+| Loki | Log aggregation | 3100 |
+| Grafana | Visualization & dashboards | 3000 |
+| Traefik | Load balancer, TLS termination | 80, 443 |
 
 ## Contributing
 
