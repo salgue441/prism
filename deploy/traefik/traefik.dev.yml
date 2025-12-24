@@ -1,0 +1,55 @@
+# Traefik Static Configuration - Development
+# =============================================================================
+# Use this config for local development (no TLS, no redirects)
+# =============================================================================
+
+# API and Dashboard
+api:
+  dashboard: true
+  insecure: true
+
+# Entry Points
+entryPoints:
+  web:
+    address: ":80"
+
+  websecure:
+    address: ":443"
+
+  grpc:
+    address: ":9090"
+
+  metrics:
+    address: ":8082"
+
+# Providers
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    network: prism-frontend
+    watch: true
+
+  file:
+    directory: "/etc/traefik/dynamic"
+    watch: true
+
+# Logging
+log:
+  level: DEBUG
+  format: common
+
+accessLog:
+  format: common
+
+# Metrics
+metrics:
+  prometheus:
+    entryPoint: metrics
+    addEntryPointsLabels: true
+    addRoutersLabels: true
+    addServicesLabels: true
+
+# Health Checks
+ping:
+  entryPoint: web

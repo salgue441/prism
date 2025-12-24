@@ -1,0 +1,30 @@
+# Traefik Dynamic Configuration - TLS
+# =============================================================================
+
+tls:
+  # TLS Options
+  options:
+    default:
+      minVersion: VersionTLS12
+      cipherSuites:
+        - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+        - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+        - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+        - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+        - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305
+        - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305
+      curvePreferences:
+        - CurveP521
+        - CurveP384
+      sniStrict: true
+
+    modern:
+      minVersion: VersionTLS13
+      sniStrict: true
+
+  # Certificate stores (for self-signed certs in development)
+  # stores:
+  #   default:
+  #     defaultCertificate:
+  #       certFile: /certs/cert.pem
+  #       keyFile: /certs/key.pem

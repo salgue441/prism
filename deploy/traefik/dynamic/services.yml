@@ -1,0 +1,159 @@
+# Traefik Dynamic Configuration - Services
+# =============================================================================
+
+http:
+  # ===========================================================================
+  # Routers
+  # ===========================================================================
+  routers:
+    # Gateway API Router
+    gateway-api:
+      rule: "PathPrefix(`/api`)"
+      entryPoints:
+        - web
+        - websecure
+      service: gateway
+      middlewares:
+        - rate-limit
+        - security-headers
+        - compress
+
+    # Auth Service Router (HTTP endpoints)
+    auth-http:
+      rule: "PathPrefix(`/auth`)"
+      entryPoints:
+        - web
+        - websecure
+      service: auth-http
+      middlewares:
+        - rate-limit-auth
+        - security-headers
+
+    # Health endpoints (no rate limiting)
+    health:
+      rule: "Path(`/health`) || Path(`/ready`) || Path(`/live`)"
+      entryPoints:
+        - web
+      service: gateway
+      priority: 100
+
+    # Dashboard (development only)
+    dashboard:
+      rule: "Host(`traefik.localhost`)"
+      entryPoints:
+        - web
+      service: api@internal
+      middlewares:
+        - auth-basic
+
+  # ===========================================================================
+  # Services
+  # ===========================================================================
+  services:
+    gateway:
+      loadBalancer:
+        servers:
+          - url: "http://gateway:8080"
+        healthCheck:
+          path: /health
+          interval: 10s
+          timeout: 3s
+
+    auth-http:
+      loadBalancer:
+        servers:
+          - url: "http://auth:8081"
+        healthCheck:
+          path: /health
+          interval: 10s
+          timeout: 3s
+
+  # ===========================================================================
+  # Middlewares
+  # ===========================================================================
+  middlewares:
+    # Rate limiting for API
+    rate-limit:
+      rateLimit:
+        average: 100
+        burst: 200
+        period: 1s
+        sourceCriterion:
+          ipStrategy:
+            depth: 1
+
+    # Stricter rate limiting for auth endpoints
+    rate-limit-auth:
+      rateLimit:
+        average: 20
+        burst: 50
+        period: 1s
+        sourceCriterion:
+          ipStrategy:
+            depth: 1
+
+    # Security headers
+    security-headers:
+      headers:
+        browserXssFilter: true
+        contentTypeNosniff: true
+        frameDeny: true
+        stsIncludeSubdomains: true
+        stsPreload: true
+        stsSeconds: 31536000
+        customFrameOptionsValue: "SAMEORIGIN"
+        customResponseHeaders:
+          X-Powered-By: ""
+          Server: ""
+
+    # Compression
+    compress:
+      compress:
+        excludedContentTypes:
+          - text/event-stream
+
+    # Basic auth (for dashboard)
+    auth-basic:
+      basicAuth:
+        users:
+          # admin:admin (change in production!)
+          - "admin:$apr1$ruca84Hq$mbjdMZBAG.KWn7vfN/SNK/"
+
+    # Retry middleware
+    retry:
+      retry:
+        attempts: 3
+        initialInterval: 100ms
+
+    # Circuit breaker
+    circuit-breaker:
+      circuitBreaker:
+        expression: "NetworkErrorRatio() > 0.5 || ResponseCodeRatio(500, 600, 0, 600) > 0.5"
+
+# ===========================================================================
+# TCP Configuration (for gRPC)
+# ===========================================================================
+tcp:
+  routers:
+    auth-grpc:
+      rule: "HostSNI(`*`)"
+      entryPoints:
+        - grpc
+      service: auth-grpc
+
+    config-grpc:
+      rule: "HostSNI(`*`)"
+      entryPoints:
+        - grpc
+      service: config-grpc
+
+  services:
+    auth-grpc:
+      loadBalancer:
+        servers:
+          - address: "auth:50051"
+
+    config-grpc:
+      loadBalancer:
+        servers:
+          - address: "config:50052"

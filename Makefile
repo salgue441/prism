@@ -6,7 +6,11 @@ PROTO_DIR := services/shared/proto
 PROTO_OUT := services/shared/proto/gen
 GO := go
 GOFLAGS := -v
-DOCKER_COMPOSE := docker compose -f deploy/docker-compose/docker-compose.yml
+COMPOSE_DIR := deploy/docker-compose
+DOCKER_COMPOSE := docker compose -f $(COMPOSE_DIR)/docker-compose.yml
+DOCKER_COMPOSE_INFRA := docker compose -f $(COMPOSE_DIR)/docker-compose.infra.yml
+DOCKER_COMPOSE_OBS := docker compose -f $(COMPOSE_DIR)/docker-compose.observability.yml
+DOCKER_COMPOSE_ALL := $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/docker-compose.infra.yml -f $(COMPOSE_DIR)/docker-compose.observability.yml
 
 # Build flags for production
 LDFLAGS := -ldflags="-s -w"
@@ -24,7 +28,7 @@ help: ## Display this help message
 # Build targets
 # =============================================================================
 
-build: build-gateway build-auth build-config ## Build all services
+build: build-gateway build-auth build-config build-dbmanager ## Build all services
 
 build-gateway: ## Build gateway service
 	@echo "Building gateway..."
@@ -40,6 +44,11 @@ build-config: ## Build config service
 	@echo "Building config service..."
 	@mkdir -p $(BINARY_DIR)
 	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_DIR)/config ./services/config/cmd
+
+build-dbmanager: ## Build dbmanager service
+	@echo "Building dbmanager service..."
+	@mkdir -p $(BINARY_DIR)
+	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_DIR)/dbmanager ./services/dbmanager/cmd
 
 # =============================================================================
 # Development targets
@@ -114,19 +123,43 @@ tidy: ## Tidy and verify go modules
 # =============================================================================
 
 docker-build: ## Build all Docker images
-	$(DOCKER_COMPOSE) build
+	$(DOCKER_COMPOSE_ALL) build
 
-docker-up: ## Start all services with Docker Compose
+docker-up: ## Start core services
 	$(DOCKER_COMPOSE) up -d
 
 docker-down: ## Stop all Docker Compose services
-	$(DOCKER_COMPOSE) down
+	$(DOCKER_COMPOSE_ALL) down
 
-docker-logs: ## View Docker Compose logs
-	$(DOCKER_COMPOSE) logs -f
+docker-logs: ## View Docker Compose logs (usage: make docker-logs service=gateway)
+	$(DOCKER_COMPOSE_ALL) logs -f $(service)
 
 docker-ps: ## List running containers
-	$(DOCKER_COMPOSE) ps
+	$(DOCKER_COMPOSE_ALL) ps
+
+docker-infra-up: ## Start infrastructure services only
+	$(DOCKER_COMPOSE_INFRA) up -d
+
+docker-infra-down: ## Stop infrastructure services
+	$(DOCKER_COMPOSE_INFRA) down
+
+docker-obs-up: ## Start observability stack
+	$(DOCKER_COMPOSE_OBS) up -d
+
+docker-obs-down: ## Stop observability stack
+	$(DOCKER_COMPOSE_OBS) down
+
+docker-full-up: ## Start all services (infra + core + observability)
+	$(DOCKER_COMPOSE_ALL) up -d
+
+docker-full-down: ## Stop all services
+	$(DOCKER_COMPOSE_ALL) down
+
+docker-restart: ## Restart all services
+	$(DOCKER_COMPOSE_ALL) restart
+
+docker-clean: ## Remove all containers, networks, and volumes
+	$(DOCKER_COMPOSE_ALL) down -v --remove-orphans
 
 # =============================================================================
 # Database
@@ -189,3 +222,29 @@ deps: ## Download dependencies
 
 vendor: ## Vendor dependencies
 	$(GO) mod vendor
+
+# =============================================================================
+# Development Setup
+# =============================================================================
+
+dev-setup: ## Setup complete development environment
+	@./scripts/dev-setup.sh
+
+dev: docker-infra-up ## Start development mode (infra + local services)
+	@echo "Infrastructure started. Run services locally with 'make run-*'"
+
+# =============================================================================
+# Backup Operations
+# =============================================================================
+
+backup-auth: ## Create backup of auth database
+	@./deploy/backup/backup.sh auth full
+
+backup-ops: ## Create backup of ops database
+	@./deploy/backup/backup.sh ops full
+
+backup-all: ## Create backup of all databases
+	@./deploy/backup/backup.sh all full
+
+backup-list: ## List available backups
+	@ls -la /var/lib/prism/backups/*/
