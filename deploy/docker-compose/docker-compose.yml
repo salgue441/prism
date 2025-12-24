@@ -1,35 +1,59 @@
-version: "3.8"
+# Prism Core Services
+#
+# Usage:
+#   Development (all services):
+#     docker compose -f docker-compose.yml -f docker-compose.infra.yml -f docker-compose.observability.yml up -d
+#
+#   Infrastructure only:
+#     docker compose -f docker-compose.infra.yml up -d
+#
+#   Core services only (requires infrastructure running):
+#     docker compose up -d
 
 services:
   # =============================================================================
-  # Core Services
+  # Gateway Service - API Gateway / Reverse Proxy
   # =============================================================================
-
   gateway:
     build:
       context: ../..
       dockerfile: deploy/docker/gateway.Dockerfile
     container_name: prism-gateway
     ports:
-      - "8080:8080"   # Main HTTP port
-      - "9080:9080"   # Health check port
+      - "${GATEWAY_PORT:-8080}:8080"
+      - "${GATEWAY_HEALTH_PORT:-9080}:9080"
     environment:
-      - ENVIRONMENT=development
-      - GATEWAY_HOST=0.0.0.0
-      - GATEWAY_PORT=8080
-      - GATEWAY_LOG_LEVEL=debug
-      - GATEWAY_LOG_FORMAT=json
-      - GATEWAY_AUTH_GRPC_ADDRESS=auth:50051
-      - GATEWAY_RATE_LIMIT_REQUESTS_PER_SECOND=100
-      - GATEWAY_RATE_LIMIT_BURST_SIZE=200
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      GATEWAY_HOST: "0.0.0.0"
+      GATEWAY_PORT: "8080"
+      GATEWAY_LOG_LEVEL: ${LOG_LEVEL:-debug}
+      GATEWAY_LOG_FORMAT: ${LOG_FORMAT:-json}
+      GATEWAY_AUTH_GRPC_ADDRESS: "auth:50051"
+      GATEWAY_CONFIG_GRPC_ADDRESS: "config:50052"
+      GATEWAY_RATE_LIMIT_REQUESTS_PER_SECOND: "100"
+      GATEWAY_RATE_LIMIT_BURST_SIZE: "200"
+      # Redis for caching
+      GATEWAY_REDIS_ADDRESS: "redis:6379"
+      GATEWAY_REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      # NATS for events
+      GATEWAY_NATS_URL: "nats://nats:4222"
+      # Tracing
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4317"
+      OTEL_SERVICE_NAME: "prism-gateway"
     volumes:
       - ../../configs/gateway.yaml:/etc/prism/gateway.yaml:ro
     depends_on:
       auth:
         condition: service_healthy
     networks:
-      - prism-network
+      - prism-frontend
+      - prism-backend
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     logging:
       driver: "json-file"
       options:
@@ -38,51 +62,73 @@ services:
         labels: "service"
     labels:
       service: "gateway"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
+  # =============================================================================
+  # Auth Service - Authentication & Authorization
+  # =============================================================================
   auth:
     build:
       context: ../..
       dockerfile: deploy/docker/auth.Dockerfile
     container_name: prism-auth
     ports:
-      - "50051:50051"  # gRPC port
-      - "8081:8081"    # HTTP port (OAuth callbacks)
-      - "51051:51051"  # Health check port
+      - "${AUTH_GRPC_PORT:-50051}:50051"
+      - "${AUTH_HTTP_PORT:-8081}:8081"
+      - "${AUTH_HEALTH_PORT:-51051}:51051"
     environment:
-      - ENVIRONMENT=development
-      - AUTH_GRPC_HOST=0.0.0.0
-      - AUTH_GRPC_PORT=50051
-      - AUTH_HTTP_HOST=0.0.0.0
-      - AUTH_HTTP_PORT=8081
-      - AUTH_DATABASE_HOST=postgres
-      - AUTH_DATABASE_PORT=5432
-      - AUTH_DATABASE_USER=prism
-      - AUTH_DATABASE_PASSWORD=prism_secret
-      - AUTH_DATABASE_NAME=prism
-      - AUTH_DATABASE_SSL_MODE=disable
-      - AUTH_JWT_PRIVATE_KEY_PATH=/var/lib/prism/keys/private.pem
-      - AUTH_JWT_PUBLIC_KEY_PATH=/var/lib/prism/keys/public.pem
-      - AUTH_JWT_ACCESS_TOKEN_TTL=15m
-      - AUTH_JWT_REFRESH_TOKEN_TTL=168h
-      - AUTH_JWT_ISSUER=prism
-      - AUTH_LOG_LEVEL=debug
-      - AUTH_LOG_FORMAT=json
-      # OAuth credentials (set these in .env or override)
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
-      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
-      - GOOGLE_REDIRECT_URL=http://localhost:8081/auth/google/callback
-      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
-      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
-      - GITHUB_REDIRECT_URL=http://localhost:8081/auth/github/callback
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      AUTH_GRPC_HOST: "0.0.0.0"
+      AUTH_GRPC_PORT: "50051"
+      AUTH_HTTP_HOST: "0.0.0.0"
+      AUTH_HTTP_PORT: "8081"
+      # Database
+      AUTH_DATABASE_HOST: "postgres-auth"
+      AUTH_DATABASE_PORT: "5432"
+      AUTH_DATABASE_USER: ${POSTGRES_AUTH_USER}
+      AUTH_DATABASE_PASSWORD: ${POSTGRES_AUTH_PASSWORD}
+      AUTH_DATABASE_NAME: ${POSTGRES_AUTH_DB}
+      AUTH_DATABASE_SSL_MODE: "disable"
+      # JWT
+      AUTH_JWT_PRIVATE_KEY_PATH: "/var/lib/prism/keys/private.pem"
+      AUTH_JWT_PUBLIC_KEY_PATH: "/var/lib/prism/keys/public.pem"
+      AUTH_JWT_ACCESS_TOKEN_TTL: ${JWT_ACCESS_TOKEN_TTL:-15m}
+      AUTH_JWT_REFRESH_TOKEN_TTL: ${JWT_REFRESH_TOKEN_TTL:-168h}
+      AUTH_JWT_ISSUER: ${JWT_ISSUER:-prism}
+      # Redis for sessions
+      AUTH_REDIS_ADDRESS: "redis:6379"
+      AUTH_REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      # NATS for events
+      AUTH_NATS_URL: "nats://nats:4222"
+      # OAuth
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URL: ${GOOGLE_REDIRECT_URL:-http://localhost:8081/auth/google/callback}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GITHUB_REDIRECT_URL: ${GITHUB_REDIRECT_URL:-http://localhost:8081/auth/github/callback}
+      # Logging
+      AUTH_LOG_LEVEL: ${LOG_LEVEL:-debug}
+      AUTH_LOG_FORMAT: ${LOG_FORMAT:-json}
+      # Tracing
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4317"
+      OTEL_SERVICE_NAME: "prism-auth"
     volumes:
       - ../../configs/auth.yaml:/etc/prism/auth.yaml:ro
       - auth-keys:/var/lib/prism/keys
-    depends_on:
-      postgres:
-        condition: service_healthy
     networks:
-      - prism-network
+      - prism-backend
+      - prism-data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:51051/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     logging:
       driver: "json-file"
       options:
@@ -91,28 +137,44 @@ services:
         labels: "service"
     labels:
       service: "auth"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
+  # =============================================================================
+  # Config Service - Configuration Management
+  # =============================================================================
   config:
     build:
       context: ../..
       dockerfile: deploy/docker/config.Dockerfile
     container_name: prism-config
     ports:
-      - "50052:50052"  # gRPC port
-      - "51052:51052"  # Health check port
+      - "${CONFIG_GRPC_PORT:-50052}:50052"
+      - "${CONFIG_HEALTH_PORT:-51052}:51052"
     environment:
-      - ENVIRONMENT=development
-      - CONFIG_GRPC_HOST=0.0.0.0
-      - CONFIG_GRPC_PORT=50052
-      - CONFIG_CONSUL_ADDRESS=consul:8500
-      - CONFIG_LOG_LEVEL=debug
-      - CONFIG_LOG_FORMAT=json
-    depends_on:
-      consul:
-        condition: service_healthy
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      CONFIG_GRPC_HOST: "0.0.0.0"
+      CONFIG_GRPC_PORT: "50052"
+      CONFIG_CONSUL_ADDRESS: "consul:8500"
+      CONFIG_CONSUL_TOKEN: ${CONSUL_HTTP_TOKEN:-}
+      # NATS for events
+      CONFIG_NATS_URL: "nats://nats:4222"
+      # Logging
+      CONFIG_LOG_LEVEL: ${LOG_LEVEL:-debug}
+      CONFIG_LOG_FORMAT: ${LOG_FORMAT:-json}
+      # Tracing
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4317"
+      OTEL_SERVICE_NAME: "prism-config"
     networks:
-      - prism-network
+      - prism-backend
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:51052/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     logging:
       driver: "json-file"
       options:
@@ -121,130 +183,28 @@ services:
         labels: "service"
     labels:
       service: "config"
-
-  # =============================================================================
-  # Infrastructure Services
-  # =============================================================================
-
-  postgres:
-    image: postgres:16-alpine
-    container_name: prism-postgres
-    ports:
-      - "5432:5432"
-    environment:
-      - POSTGRES_USER=prism
-      - POSTGRES_PASSWORD=prism_secret
-      - POSTGRES_DB=prism
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ../../migrations:/docker-entrypoint-initdb.d:ro
-    networks:
-      - prism-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U prism -d prism"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-  consul:
-    image: hashicorp/consul:1.17
-    container_name: prism-consul
-    ports:
-      - "8500:8500"   # HTTP API
-      - "8600:8600/udp"  # DNS
-    environment:
-      - CONSUL_BIND_INTERFACE=eth0
-    command: agent -server -ui -bootstrap-expect=1 -client=0.0.0.0
-    volumes:
-      - consul-data:/consul/data
-    networks:
-      - prism-network
-    healthcheck:
-      test: ["CMD", "consul", "members"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-  # =============================================================================
-  # Observability Stack
-  # =============================================================================
-
-  loki:
-    image: grafana/loki:2.9.3
-    container_name: prism-loki
-    ports:
-      - "3100:3100"
-    volumes:
-      - ../observability/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
-      - loki-data:/loki
-    command: -config.file=/etc/loki/local-config.yaml
-    networks:
-      - prism-network
-    healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-  promtail:
-    image: grafana/promtail:2.9.3
-    container_name: prism-promtail
-    volumes:
-      - ../observability/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    command: -config.file=/etc/promtail/config.yml
-    depends_on:
-      - loki
-    networks:
-      - prism-network
-    restart: unless-stopped
-
-  grafana:
-    image: grafana/grafana:10.2.3
-    container_name: prism-grafana
-    ports:
-      - "3000:3000"
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_AUTH_ANONYMOUS_ENABLED=true
-      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
-    volumes:
-      - grafana-data:/var/lib/grafana
-      - ../observability/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ../observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
-    depends_on:
-      - loki
-    networks:
-      - prism-network
-    healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M
 
 # =============================================================================
-# Networks and Volumes
+# Networks
 # =============================================================================
-
 networks:
-  prism-network:
+  prism-frontend:
     driver: bridge
-    name: prism-network
+    name: prism-frontend
+  prism-backend:
+    driver: bridge
+    name: prism-backend
+  prism-data:
+    driver: bridge
+    name: prism-data
 
+# =============================================================================
+# Volumes
+# =============================================================================
 volumes:
-  postgres-data:
-    name: prism-postgres-data
-  consul-data:
-    name: prism-consul-data
-  loki-data:
-    name: prism-loki-data
-  grafana-data:
-    name: prism-grafana-data
   auth-keys:
     name: prism-auth-keys

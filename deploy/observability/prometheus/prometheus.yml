@@ -1,0 +1,81 @@
+# Prism Prometheus Configuration
+# =============================================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'prism-monitor'
+
+# Alertmanager configuration (optional, configure if using alertmanager)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - alertmanager:9093
+
+# Rule files
+rule_files:
+  - /etc/prometheus/alert-rules.yml
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # ==========================================================================
+  # Prism Services
+  # ==========================================================================
+
+  # Gateway Service
+  - job_name: 'prism-gateway'
+    static_configs:
+      - targets: ['gateway:9080']
+    metrics_path: /metrics
+    scrape_interval: 10s
+
+  # Auth Service
+  - job_name: 'prism-auth'
+    static_configs:
+      - targets: ['auth:51051']
+    metrics_path: /metrics
+    scrape_interval: 10s
+
+  # Config Service
+  - job_name: 'prism-config'
+    static_configs:
+      - targets: ['config:51052']
+    metrics_path: /metrics
+    scrape_interval: 10s
+
+  # ==========================================================================
+  # Infrastructure Exporters
+  # ==========================================================================
+
+  # PostgreSQL Exporter
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+    scrape_interval: 30s
+
+  # Redis Exporter
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+    scrape_interval: 15s
+
+  # NATS Exporter
+  - job_name: 'nats'
+    static_configs:
+      - targets: ['nats-exporter:7777']
+    scrape_interval: 15s
+
+  # ==========================================================================
+  # Container Metrics (if using cAdvisor)
+  # ==========================================================================
+  # - job_name: 'cadvisor'
+  #   static_configs:
+  #     - targets: ['cadvisor:8080']
+  #   scrape_interval: 15s

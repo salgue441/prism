@@ -114,6 +114,7 @@ scrape_configs:
           service:
           environment:
           component:
+          trace_id:
 
       # Create metrics from HTTP requests
       - metrics:

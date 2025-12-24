@@ -1,0 +1,195 @@
+# Infrastructure services for Prism
+# Usage: docker compose -f docker-compose.yml -f docker-compose.infra.yml up -d
+
+services:
+  # =============================================================================
+  # PostgreSQL - Auth Database
+  # =============================================================================
+  postgres-auth:
+    image: postgres:16-alpine
+    container_name: prism-postgres-auth
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_AUTH_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_AUTH_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_AUTH_DB}
+    volumes:
+      - postgres-auth-data:/var/lib/postgresql/data
+      - ../postgres/init-auth-db.sh:/docker-entrypoint-initdb.d/init.sh:ro
+      - ../../migrations/auth:/migrations:ro
+    networks:
+      - prism-data
+      - prism-backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # =============================================================================
+  # PostgreSQL - Operational Database
+  # =============================================================================
+  postgres-ops:
+    image: postgres:16-alpine
+    container_name: prism-postgres-ops
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_OPS_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_OPS_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_OPS_DB}
+    volumes:
+      - postgres-ops-data:/var/lib/postgresql/data
+      - ../postgres/init-ops-db.sh:/docker-entrypoint-initdb.d/init.sh:ro
+      - ../../migrations/ops:/migrations:ro
+    networks:
+      - prism-data
+      - prism-backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # =============================================================================
+  # Redis - Caching and Sessions
+  # =============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: prism-redis
+    ports:
+      - "6379:6379"
+    command: redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - redis-data:/data
+      - ../redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    networks:
+      - prism-backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  # =============================================================================
+  # NATS - Message Queue
+  # =============================================================================
+  nats:
+    image: nats:2.10-alpine
+    container_name: prism-nats
+    ports:
+      - "4222:4222"   # Client connections
+      - "8222:8222"   # HTTP monitoring
+      - "6222:6222"   # Cluster routing
+    command: -c /etc/nats/nats-server.conf
+    volumes:
+      - nats-data:/data
+      - ../nats/nats-server.conf:/etc/nats/nats-server.conf:ro
+    networks:
+      - prism-backend
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  # =============================================================================
+  # Consul - Service Discovery
+  # =============================================================================
+  consul:
+    image: hashicorp/consul:1.17
+    container_name: prism-consul
+    ports:
+      - "8500:8500"      # HTTP API
+      - "8600:8600/udp"  # DNS
+    environment:
+      CONSUL_BIND_INTERFACE: eth0
+    command: agent -server -ui -bootstrap-expect=1 -client=0.0.0.0
+    volumes:
+      - consul-data:/consul/data
+    networks:
+      - prism-backend
+    healthcheck:
+      test: ["CMD", "consul", "members"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  # =============================================================================
+  # MinIO - S3-Compatible Object Storage (for backups)
+  # =============================================================================
+  minio:
+    image: minio/minio:latest
+    container_name: prism-minio
+    ports:
+      - "9000:9000"   # API
+      - "9001:9001"   # Console
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - prism-data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+networks:
+  prism-backend:
+    driver: bridge
+    name: prism-backend
+  prism-data:
+    driver: bridge
+    name: prism-data
+    internal: true  # Isolated network for databases
+
+volumes:
+  postgres-auth-data:
+    name: prism-postgres-auth-data
+  postgres-ops-data:
+    name: prism-postgres-ops-data
+  redis-data:
+    name: prism-redis-data
+  nats-data:
+    name: prism-nats-data
+  consul-data:
+    name: prism-consul-data
+  minio-data:
+    name: prism-minio-data
