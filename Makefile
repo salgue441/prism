@@ -1,4 +1,4 @@
-.PHONY: all build test clean proto lint fmt run-gateway run-auth run-config docker-build docker-up docker-down generate-keys migrate help
+.PHONY: all build test clean proto lint fmt run-gateway run-auth run-config docker-build docker-up docker-down generate-keys migrate help build-dashboard run-dashboard
 
 # Variables
 BINARY_DIR := bin
@@ -50,6 +50,10 @@ build-dbmanager: ## Build dbmanager service
 	@mkdir -p $(BINARY_DIR)
 	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_DIR)/dbmanager ./services/dbmanager/cmd
 
+build-dashboard: ## Build web dashboard
+	@echo "Building web dashboard..."
+	cd web/dashboard && npm ci && npm run build
+
 # =============================================================================
 # Development targets
 # =============================================================================
@@ -62,6 +66,9 @@ run-auth: ## Run auth service locally
 
 run-config: ## Run config service locally
 	$(GO) run ./services/config/cmd
+
+run-dashboard: ## Run web dashboard in development mode
+	cd web/dashboard && npm run dev
 
 # =============================================================================
 # Protocol Buffers

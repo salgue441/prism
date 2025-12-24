@@ -188,6 +188,40 @@ services:
         limits:
           memory: 128M
 
+  # =============================================================================
+  # Dashboard - Web UI for Monitoring
+  # =============================================================================
+  dashboard:
+    build:
+      context: ../..
+      dockerfile: web/dashboard/Dockerfile
+    container_name: prism-dashboard
+    ports:
+      - "${DASHBOARD_PORT:-3001}:3001"
+    depends_on:
+      gateway:
+        condition: service_healthy
+    networks:
+      - prism-frontend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service"
+    labels:
+      service: "dashboard"
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+
 # =============================================================================
 # Networks
 # =============================================================================

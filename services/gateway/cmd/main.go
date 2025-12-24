@@ -16,6 +16,7 @@ import (
 	"github.com/carlossalguero/prism/services/gateway/internal/auth"
 	"github.com/carlossalguero/prism/services/gateway/internal/circuitbreaker"
 	"github.com/carlossalguero/prism/services/gateway/internal/config"
+	"github.com/carlossalguero/prism/services/gateway/internal/dashboard"
 	"github.com/carlossalguero/prism/services/gateway/internal/middleware"
 	"github.com/carlossalguero/prism/services/gateway/internal/mirror"
 	"github.com/carlossalguero/prism/services/gateway/internal/proxy"
@@ -410,7 +411,16 @@ func main() {
 		server.TLSConfig = tlsConfig
 	}
 
-	// Start health check server with metrics endpoint in background
+	// Initialize dashboard API
+	dashboardAPI := dashboard.New(dashboard.Config{
+		Router:         rtr,
+		Metrics:        metricsInstance,
+		CircuitBreaker: cbRegistry,
+		Version:        version(),
+		Logger:         log,
+	})
+
+	// Start health check server with metrics and dashboard endpoints in background
 	go func() {
 		healthAddr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port+1000)
 		healthMux := http.NewServeMux()
@@ -419,12 +429,15 @@ func main() {
 		healthMux.HandleFunc("/health/ready", healthChecker.ReadyHandler)
 		healthMux.Handle("/metrics", metricsInstance.Handler())
 
+		// Register dashboard API routes
+		dashboardAPI.RegisterRoutes(healthMux)
+
 		healthServer := &http.Server{
 			Addr:    healthAddr,
 			Handler: healthMux,
 		}
 
-		log.Info("starting health/metrics server", "address", healthAddr)
+		log.Info("starting health/metrics/dashboard server", "address", healthAddr)
 		if err := healthServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Error("health server error", "error", err)
 		}
