@@ -36,6 +36,14 @@ type Route struct {
 	RequiredScopes []string
 	RateLimitKey   string
 
+	// Traffic mirroring configuration
+	MirrorEnabled    bool              // Enable mirroring for this route
+	MirrorUpstreamID string            // Upstream ID to mirror to
+	MirrorSamplePct  float64           // Percentage of requests to mirror (0-100)
+	MirrorTimeoutMs  int               // Timeout for mirror requests
+	MirrorLogDiff    bool              // Log status code differences
+	MirrorHeaders    map[string]string // Additional headers for mirror requests
+
 	Enabled bool
 }
 
@@ -376,6 +384,19 @@ func (r *Router) Handler(proxyHandler http.Handler) http.Handler {
 		// Store route info in context for middleware
 		ctx := context.WithValue(req.Context(), routeContextKey{}, route)
 		ctx = context.WithValue(ctx, proxy.TargetKey, targetURL)
+
+		// Add mirror config to context if enabled
+		if route.MirrorEnabled {
+			mirrorCfg := &proxy.MirrorConfig{
+				Enabled:      true,
+				UpstreamID:   route.MirrorUpstreamID,
+				SamplePct:    route.MirrorSamplePct,
+				TimeoutMs:    route.MirrorTimeoutMs,
+				LogDiff:      route.MirrorLogDiff,
+				HeadersToAdd: route.MirrorHeaders,
+			}
+			ctx = context.WithValue(ctx, proxy.MirrorConfigKey, mirrorCfg)
+		}
 
 		proxyHandler.ServeHTTP(w, req.WithContext(ctx))
 	})

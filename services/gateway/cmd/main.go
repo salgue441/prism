@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -16,6 +17,7 @@ import (
 	"github.com/carlossalguero/prism/services/gateway/internal/circuitbreaker"
 	"github.com/carlossalguero/prism/services/gateway/internal/config"
 	"github.com/carlossalguero/prism/services/gateway/internal/middleware"
+	"github.com/carlossalguero/prism/services/gateway/internal/mirror"
 	"github.com/carlossalguero/prism/services/gateway/internal/proxy"
 	"github.com/carlossalguero/prism/services/gateway/internal/router"
 	"github.com/carlossalguero/prism/services/shared/cache"
@@ -282,7 +284,28 @@ func main() {
 		cancel()
 	}
 
-	// Initialize proxy with circuit breaker
+	// Initialize mirror handler for traffic mirroring
+	mirrorHandler := mirror.NewHandler(mirror.HandlerConfig{
+		Transport: &http.Transport{
+			MaxIdleConns:        50,
+			MaxIdleConnsPerHost: 5,
+			IdleConnTimeout:     30 * time.Second,
+		},
+		Logger:  log,
+		Metrics: metricsInstance,
+		Events:  eventsClient,
+		UpstreamResolver: func(upstreamID string) *url.URL {
+			if u := rtr.GetUpstream(upstreamID); u != nil && len(u.Targets) > 0 {
+				// Use first target for simplicity (could use load balancer)
+				return u.Targets[0].URL
+			}
+			return nil
+		},
+		MaxBodySize: 10 * 1024 * 1024, // 10MB
+	})
+	log.Info("mirror handler initialized")
+
+	// Initialize proxy with circuit breaker and mirror handler
 	prx := proxy.New(proxy.Config{
 		Transport: &http.Transport{
 			MaxIdleConns:        100,
@@ -290,6 +313,7 @@ func main() {
 			IdleConnTimeout:     90 * time.Second,
 		},
 		CircuitBreakerRegistry: cbRegistry,
+		MirrorHandler:          mirrorHandler,
 	})
 
 	// Build middleware chain

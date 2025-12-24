@@ -256,11 +256,13 @@ type Route struct {
 	// Middleware configuration
 	Middleware *RouteMiddleware `protobuf:"bytes,10,opt,name=middleware,proto3" json:"middleware,omitempty"`
 	// Metadata
-	Priority      int32                  `protobuf:"varint,11,opt,name=priority,proto3" json:"priority,omitempty"` // Higher priority routes match first
-	Enabled       bool                   `protobuf:"varint,12,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	Metadata      map[string]string      `protobuf:"bytes,13,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,15,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	Priority  int32                  `protobuf:"varint,11,opt,name=priority,proto3" json:"priority,omitempty"` // Higher priority routes match first
+	Enabled   bool                   `protobuf:"varint,12,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	Metadata  map[string]string      `protobuf:"bytes,13,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt *timestamppb.Timestamp `protobuf:"bytes,15,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	// Traffic mirroring
+	Mirror        *MirrorConfig `protobuf:"bytes,16,opt,name=mirror,proto3" json:"mirror,omitempty"` // Optional mirror configuration
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -396,6 +398,13 @@ func (x *Route) GetCreatedAt() *timestamppb.Timestamp {
 func (x *Route) GetUpdatedAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.UpdatedAt
+	}
+	return nil
+}
+
+func (x *Route) GetMirror() *MirrorConfig {
+	if x != nil {
+		return x.Mirror
 	}
 	return nil
 }
@@ -584,6 +593,91 @@ func (x *CORSConfig) GetMaxAge() int32 {
 	return 0
 }
 
+// Traffic mirroring configuration
+type MirrorConfig struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Enabled          bool                   `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`                                                                                                          // Enable/disable mirroring for this route
+	UpstreamId       string                 `protobuf:"bytes,2,opt,name=upstream_id,json=upstreamId,proto3" json:"upstream_id,omitempty"`                                                                                   // Shadow upstream to mirror requests to
+	SamplePercentage float64                `protobuf:"fixed64,3,opt,name=sample_percentage,json=samplePercentage,proto3" json:"sample_percentage,omitempty"`                                                               // 0.0-100.0, percentage of requests to mirror
+	TimeoutMs        int32                  `protobuf:"varint,4,opt,name=timeout_ms,json=timeoutMs,proto3" json:"timeout_ms,omitempty"`                                                                                     // Timeout for mirror requests (default: 5000)
+	LogResponseDiff  bool                   `protobuf:"varint,5,opt,name=log_response_diff,json=logResponseDiff,proto3" json:"log_response_diff,omitempty"`                                                                 // Log status code differences
+	HeadersToAdd     map[string]string      `protobuf:"bytes,6,rep,name=headers_to_add,json=headersToAdd,proto3" json:"headers_to_add,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Additional headers for mirror requests
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *MirrorConfig) Reset() {
+	*x = MirrorConfig{}
+	mi := &file_config_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MirrorConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MirrorConfig) ProtoMessage() {}
+
+func (x *MirrorConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_config_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MirrorConfig.ProtoReflect.Descriptor instead.
+func (*MirrorConfig) Descriptor() ([]byte, []int) {
+	return file_config_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *MirrorConfig) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *MirrorConfig) GetUpstreamId() string {
+	if x != nil {
+		return x.UpstreamId
+	}
+	return ""
+}
+
+func (x *MirrorConfig) GetSamplePercentage() float64 {
+	if x != nil {
+		return x.SamplePercentage
+	}
+	return 0
+}
+
+func (x *MirrorConfig) GetTimeoutMs() int32 {
+	if x != nil {
+		return x.TimeoutMs
+	}
+	return 0
+}
+
+func (x *MirrorConfig) GetLogResponseDiff() bool {
+	if x != nil {
+		return x.LogResponseDiff
+	}
+	return false
+}
+
+func (x *MirrorConfig) GetHeadersToAdd() map[string]string {
+	if x != nil {
+		return x.HeadersToAdd
+	}
+	return nil
+}
+
 type Upstream struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Id             string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -600,7 +694,7 @@ type Upstream struct {
 
 func (x *Upstream) Reset() {
 	*x = Upstream{}
-	mi := &file_config_proto_msgTypes[3]
+	mi := &file_config_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -612,7 +706,7 @@ func (x *Upstream) String() string {
 func (*Upstream) ProtoMessage() {}
 
 func (x *Upstream) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[3]
+	mi := &file_config_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -625,7 +719,7 @@ func (x *Upstream) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Upstream.ProtoReflect.Descriptor instead.
 func (*Upstream) Descriptor() ([]byte, []int) {
-	return file_config_proto_rawDescGZIP(), []int{3}
+	return file_config_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Upstream) GetId() string {
@@ -698,7 +792,7 @@ type Target struct {
 
 func (x *Target) Reset() {
 	*x = Target{}
-	mi := &file_config_proto_msgTypes[4]
+	mi := &file_config_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -710,7 +804,7 @@ func (x *Target) String() string {
 func (*Target) ProtoMessage() {}
 
 func (x *Target) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[4]
+	mi := &file_config_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -723,7 +817,7 @@ func (x *Target) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Target.ProtoReflect.Descriptor instead.
 func (*Target) Descriptor() ([]byte, []int) {
-	return file_config_proto_rawDescGZIP(), []int{4}
+	return file_config_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Target) GetId() string {
@@ -777,7 +871,7 @@ type LoadBalancerConfig struct {
 
 func (x *LoadBalancerConfig) Reset() {
 	*x = LoadBalancerConfig{}
-	mi := &file_config_proto_msgTypes[5]
+	mi := &file_config_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -789,7 +883,7 @@ func (x *LoadBalancerConfig) String() string {
 func (*LoadBalancerConfig) ProtoMessage() {}
 
 func (x *LoadBalancerConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[5]
+	mi := &file_config_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -802,7 +896,7 @@ func (x *LoadBalancerConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LoadBalancerConfig.ProtoReflect.Descriptor instead.
 func (*LoadBalancerConfig) Descriptor() ([]byte, []int) {
-	return file_config_proto_rawDescGZIP(), []int{5}
+	return file_config_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *LoadBalancerConfig) GetAlgorithm() LoadBalancerAlgorithm {
@@ -826,7 +920,7 @@ type HealthCheckConfig struct {
 
 func (x *HealthCheckConfig) Reset() {
 	*x = HealthCheckConfig{}
-	mi := &file_config_proto_msgTypes[6]
+	mi := &file_config_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -838,7 +932,7 @@ func (x *HealthCheckConfig) String() string {
 func (*HealthCheckConfig) ProtoMessage() {}
 
 func (x *HealthCheckConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[6]
+	mi := &file_config_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -851,7 +945,7 @@ func (x *HealthCheckConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthCheckConfig.ProtoReflect.Descriptor instead.
 func (*HealthCheckConfig) Descriptor() ([]byte, []int) {
-	return file_config_proto_rawDescGZIP(), []int{6}
+	return file_config_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *HealthCheckConfig) GetEnabled() bool {
@@ -908,7 +1002,7 @@ type CircuitBreakerConfig struct {
 
 func (x *CircuitBreakerConfig) Reset() {
 	*x = CircuitBreakerConfig{}
-	mi := &file_config_proto_msgTypes[7]
+	mi := &file_config_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -920,7 +1014,7 @@ func (x *CircuitBreakerConfig) String() string {
 func (*CircuitBreakerConfig) ProtoMessage() {}
 
 func (x *CircuitBreakerConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[7]
+	mi := &file_config_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -933,7 +1027,7 @@ func (x *CircuitBreakerConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CircuitBreakerConfig.ProtoReflect.Descriptor instead.
 func (*CircuitBreakerConfig) Descriptor() ([]byte, []int) {
-	return file_config_proto_rawDescGZIP(), []int{7}
+	return file_config_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *CircuitBreakerConfig) GetEnabled() bool {
@@ -974,7 +1068,7 @@ type UpstreamHealth struct {
 
 func (x *UpstreamHealth) Reset() {
 	*x = UpstreamHealth{}
-	mi := &file_config_proto_msgTypes[8]
+	mi := &file_config_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -986,7 +1080,7 @@ func (x *UpstreamHealth) String() string {
 func (*UpstreamHealth) ProtoMessage() {}
 
 func (x *UpstreamHealth) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[8]
+	mi := &file_config_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -999,7 +1093,7 @@ func (x *UpstreamHealth) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpstreamHealth.ProtoReflect.Descriptor instead.
 func (*UpstreamHealth) Descriptor() ([]byte, []int) {
-	return file_config_proto_rawDescGZIP(), []int{8}
+	return file_config_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *UpstreamHealth) GetUpstreamId() string {
@@ -1028,7 +1122,7 @@ type TargetHealth struct {
 
 func (x *TargetHealth) Reset() {
 	*x = TargetHealth{}
-	mi := &file_config_proto_msgTypes[9]
+	mi := &file_config_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1040,7 +1134,7 @@ func (x *TargetHealth) String() string {
 func (*TargetHealth) ProtoMessage() {}
 
 func (x *TargetHealth) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[9]
+	mi := &file_config_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1053,7 +1147,7 @@ func (x *TargetHealth) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TargetHealth.ProtoReflect.Descriptor instead.
 func (*TargetHealth) Descriptor() ([]byte, []int) {
-	return file_config_proto_rawDescGZIP(), []int{9}
+	return file_config_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *TargetHealth) GetTargetId() string {
@@ -1101,7 +1195,7 @@ type RateLimitRule struct {
 
 func (x *RateLimitRule) Reset() {
 	*x = RateLimitRule{}
-	mi := &file_config_proto_msgTypes[10]
+	mi := &file_config_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1113,7 +1207,7 @@ func (x *RateLimitRule) String() string {
 func (*RateLimitRule) ProtoMessage() {}
 
 func (x *RateLimitRule) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[10]
+	mi := &file_config_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1126,7 +1220,7 @@ func (x *RateLimitRule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RateLimitRule.ProtoReflect.Descriptor instead.
 func (*RateLimitRule) Descriptor() ([]byte, []int) {
-	return file_config_proto_rawDescGZIP(), []int{10}
+	return file_config_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *RateLimitRule) GetId() string {
@@ -1195,7 +1289,7 @@ type CreateRouteRequest struct {
 
 func (x *CreateRouteRequest) Reset() {
 	*x = CreateRouteRequest{}
-	mi := &file_config_proto_msgTypes[11]
+	mi := &file_config_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1207,7 +1301,7 @@ func (x *CreateRouteRequest) String() string {
 func (*CreateRouteRequest) ProtoMessage() {}
 
 func (x *CreateRouteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[11]
+	mi := &file_config_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1220,7 +1314,7 @@ func (x *CreateRouteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateRouteRequest.ProtoReflect.Descriptor instead.
 func (*CreateRouteRequest) Descriptor() ([]byte, []int) {
-	return file_config_proto_rawDescGZIP(), []int{11}
+	return file_config_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *CreateRouteRequest) GetRoute() *Route {
@@ -1239,7 +1333,7 @@ type GetRouteRequest struct {
 
 func (x *GetRouteRequest) Reset() {
 	*x = GetRouteRequest{}
-	mi := &file_config_proto_msgTypes[12]
+	mi := &file_config_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1251,7 +1345,7 @@ func (x *GetRouteRequest) String() string {
 func (*GetRouteRequest) ProtoMessage() {}
 
 func (x *GetRouteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[12]
+	mi := &file_config_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1264,7 +1358,7 @@ func (x *GetRouteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRouteRequest.ProtoReflect.Descriptor instead.
 func (*GetRouteRequest) Descriptor() ([]byte, []int) {
-	return file_config_proto_rawDescGZIP(), []int{12}
+	return file_config_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *GetRouteRequest) GetId() string {
@@ -1283,7 +1377,7 @@ type UpdateRouteRequest struct {
 
 func (x *UpdateRouteRequest) Reset() {
 	*x = UpdateRouteRequest{}
-	mi := &file_config_proto_msgTypes[13]
+	mi := &file_config_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1295,7 +1389,7 @@ func (x *UpdateRouteRequest) String() string {
 func (*UpdateRouteRequest) ProtoMessage() {}
 
 func (x *UpdateRouteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[13]
+	mi := &file_config_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1308,7 +1402,7 @@ func (x *UpdateRouteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateRouteRequest.ProtoReflect.Descriptor instead.
 func (*UpdateRouteRequest) Descriptor() ([]byte, []int) {
-	return file_config_proto_rawDescGZIP(), []int{13}
+	return file_config_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *UpdateRouteRequest) GetRoute() *Route {
@@ -1327,7 +1421,7 @@ type DeleteRouteRequest struct {
 
 func (x *DeleteRouteRequest) Reset() {
 	*x = DeleteRouteRequest{}
-	mi := &file_config_proto_msgTypes[14]
+	mi := &file_config_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1339,7 +1433,7 @@ func (x *DeleteRouteRequest) String() string {
 func (*DeleteRouteRequest) ProtoMessage() {}
 
 func (x *DeleteRouteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[14]
+	mi := &file_config_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1352,7 +1446,7 @@ func (x *DeleteRouteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteRouteRequest.ProtoReflect.Descriptor instead.
 func (*DeleteRouteRequest) Descriptor() ([]byte, []int) {
-	return file_config_proto_rawDescGZIP(), []int{14}
+	return file_config_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *DeleteRouteRequest) GetId() string {
@@ -1373,7 +1467,7 @@ type ListRoutesRequest struct {
 
 func (x *ListRoutesRequest) Reset() {
 	*x = ListRoutesRequest{}
-	mi := &file_config_proto_msgTypes[15]
+	mi := &file_config_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1385,7 +1479,7 @@ func (x *ListRoutesRequest) String() string {
 func (*ListRoutesRequest) ProtoMessage() {}
 
 func (x *ListRoutesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[15]
+	mi := &file_config_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1398,7 +1492,7 @@ func (x *ListRoutesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRoutesRequest.ProtoReflect.Descriptor instead.
 func (*ListRoutesRequest) Descriptor() ([]byte, []int) {
-	return file_config_proto_rawDescGZIP(), []int{15}
+	return file_config_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ListRoutesRequest) GetPage() int32 {
@@ -1432,7 +1526,7 @@ type ListRoutesResponse struct {
 
 func (x *ListRoutesResponse) Reset() {
 	*x = ListRoutesResponse{}
-	mi := &file_config_proto_msgTypes[16]
+	mi := &file_config_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1444,7 +1538,7 @@ func (x *ListRoutesResponse) String() string {
 func (*ListRoutesResponse) ProtoMessage() {}
 
 func (x *ListRoutesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[16]
+	mi := &file_config_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1457,7 +1551,7 @@ func (x *ListRoutesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRoutesResponse.ProtoReflect.Descriptor instead.
 func (*ListRoutesResponse) Descriptor() ([]byte, []int) {
-	return file_config_proto_rawDescGZIP(), []int{16}
+	return file_config_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ListRoutesResponse) GetRoutes() []*Route {
@@ -1484,7 +1578,7 @@ type RegisterUpstreamRequest struct {
 
 func (x *RegisterUpstreamRequest) Reset() {
 	*x = RegisterUpstreamRequest{}
-	mi := &file_config_proto_msgTypes[17]
+	mi := &file_config_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1496,7 +1590,7 @@ func (x *RegisterUpstreamRequest) String() string {
 func (*RegisterUpstreamRequest) ProtoMessage() {}
 
 func (x *RegisterUpstreamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[17]
+	mi := &file_config_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1509,7 +1603,7 @@ func (x *RegisterUpstreamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterUpstreamRequest.ProtoReflect.Descriptor instead.
 func (*RegisterUpstreamRequest) Descriptor() ([]byte, []int) {
-	return file_config_proto_rawDescGZIP(), []int{17}
+	return file_config_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *RegisterUpstreamRequest) GetUpstream() *Upstream {
@@ -1528,7 +1622,7 @@ type DeregisterUpstreamRequest struct {
 
 func (x *DeregisterUpstreamRequest) Reset() {
 	*x = DeregisterUpstreamRequest{}
-	mi := &file_config_proto_msgTypes[18]
+	mi := &file_config_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1540,7 +1634,7 @@ func (x *DeregisterUpstreamRequest) String() string {
 func (*DeregisterUpstreamRequest) ProtoMessage() {}
 
 func (x *DeregisterUpstreamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[18]
+	mi := &file_config_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1553,7 +1647,7 @@ func (x *DeregisterUpstreamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeregisterUpstreamRequest.ProtoReflect.Descriptor instead.
 func (*DeregisterUpstreamRequest) Descriptor() ([]byte, []int) {
-	return file_config_proto_rawDescGZIP(), []int{18}
+	return file_config_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *DeregisterUpstreamRequest) GetId() string {
@@ -1573,7 +1667,7 @@ type ListUpstreamsRequest struct {
 
 func (x *ListUpstreamsRequest) Reset() {
 	*x = ListUpstreamsRequest{}
-	mi := &file_config_proto_msgTypes[19]
+	mi := &file_config_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1585,7 +1679,7 @@ func (x *ListUpstreamsRequest) String() string {
 func (*ListUpstreamsRequest) ProtoMessage() {}
 
 func (x *ListUpstreamsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[19]
+	mi := &file_config_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1598,7 +1692,7 @@ func (x *ListUpstreamsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUpstreamsRequest.ProtoReflect.Descriptor instead.
 func (*ListUpstreamsRequest) Descriptor() ([]byte, []int) {
-	return file_config_proto_rawDescGZIP(), []int{19}
+	return file_config_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ListUpstreamsRequest) GetPage() int32 {
@@ -1625,7 +1719,7 @@ type ListUpstreamsResponse struct {
 
 func (x *ListUpstreamsResponse) Reset() {
 	*x = ListUpstreamsResponse{}
-	mi := &file_config_proto_msgTypes[20]
+	mi := &file_config_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1637,7 +1731,7 @@ func (x *ListUpstreamsResponse) String() string {
 func (*ListUpstreamsResponse) ProtoMessage() {}
 
 func (x *ListUpstreamsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[20]
+	mi := &file_config_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1650,7 +1744,7 @@ func (x *ListUpstreamsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUpstreamsResponse.ProtoReflect.Descriptor instead.
 func (*ListUpstreamsResponse) Descriptor() ([]byte, []int) {
-	return file_config_proto_rawDescGZIP(), []int{20}
+	return file_config_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ListUpstreamsResponse) GetUpstreams() []*Upstream {
@@ -1676,7 +1770,7 @@ type GetUpstreamHealthRequest struct {
 
 func (x *GetUpstreamHealthRequest) Reset() {
 	*x = GetUpstreamHealthRequest{}
-	mi := &file_config_proto_msgTypes[21]
+	mi := &file_config_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1688,7 +1782,7 @@ func (x *GetUpstreamHealthRequest) String() string {
 func (*GetUpstreamHealthRequest) ProtoMessage() {}
 
 func (x *GetUpstreamHealthRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[21]
+	mi := &file_config_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1701,7 +1795,7 @@ func (x *GetUpstreamHealthRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetUpstreamHealthRequest.ProtoReflect.Descriptor instead.
 func (*GetUpstreamHealthRequest) Descriptor() ([]byte, []int) {
-	return file_config_proto_rawDescGZIP(), []int{21}
+	return file_config_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *GetUpstreamHealthRequest) GetId() string {
@@ -1721,7 +1815,7 @@ type CreateRateLimitRuleRequest struct {
 
 func (x *CreateRateLimitRuleRequest) Reset() {
 	*x = CreateRateLimitRuleRequest{}
-	mi := &file_config_proto_msgTypes[22]
+	mi := &file_config_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1733,7 +1827,7 @@ func (x *CreateRateLimitRuleRequest) String() string {
 func (*CreateRateLimitRuleRequest) ProtoMessage() {}
 
 func (x *CreateRateLimitRuleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[22]
+	mi := &file_config_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1746,7 +1840,7 @@ func (x *CreateRateLimitRuleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateRateLimitRuleRequest.ProtoReflect.Descriptor instead.
 func (*CreateRateLimitRuleRequest) Descriptor() ([]byte, []int) {
-	return file_config_proto_rawDescGZIP(), []int{22}
+	return file_config_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *CreateRateLimitRuleRequest) GetRule() *RateLimitRule {
@@ -1765,7 +1859,7 @@ type UpdateRateLimitRuleRequest struct {
 
 func (x *UpdateRateLimitRuleRequest) Reset() {
 	*x = UpdateRateLimitRuleRequest{}
-	mi := &file_config_proto_msgTypes[23]
+	mi := &file_config_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1777,7 +1871,7 @@ func (x *UpdateRateLimitRuleRequest) String() string {
 func (*UpdateRateLimitRuleRequest) ProtoMessage() {}
 
 func (x *UpdateRateLimitRuleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[23]
+	mi := &file_config_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1790,7 +1884,7 @@ func (x *UpdateRateLimitRuleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateRateLimitRuleRequest.ProtoReflect.Descriptor instead.
 func (*UpdateRateLimitRuleRequest) Descriptor() ([]byte, []int) {
-	return file_config_proto_rawDescGZIP(), []int{23}
+	return file_config_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *UpdateRateLimitRuleRequest) GetRule() *RateLimitRule {
@@ -1809,7 +1903,7 @@ type DeleteRateLimitRuleRequest struct {
 
 func (x *DeleteRateLimitRuleRequest) Reset() {
 	*x = DeleteRateLimitRuleRequest{}
-	mi := &file_config_proto_msgTypes[24]
+	mi := &file_config_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1821,7 +1915,7 @@ func (x *DeleteRateLimitRuleRequest) String() string {
 func (*DeleteRateLimitRuleRequest) ProtoMessage() {}
 
 func (x *DeleteRateLimitRuleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[24]
+	mi := &file_config_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1834,7 +1928,7 @@ func (x *DeleteRateLimitRuleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteRateLimitRuleRequest.ProtoReflect.Descriptor instead.
 func (*DeleteRateLimitRuleRequest) Descriptor() ([]byte, []int) {
-	return file_config_proto_rawDescGZIP(), []int{24}
+	return file_config_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *DeleteRateLimitRuleRequest) GetId() string {
@@ -1854,7 +1948,7 @@ type ListRateLimitRulesRequest struct {
 
 func (x *ListRateLimitRulesRequest) Reset() {
 	*x = ListRateLimitRulesRequest{}
-	mi := &file_config_proto_msgTypes[25]
+	mi := &file_config_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1866,7 +1960,7 @@ func (x *ListRateLimitRulesRequest) String() string {
 func (*ListRateLimitRulesRequest) ProtoMessage() {}
 
 func (x *ListRateLimitRulesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[25]
+	mi := &file_config_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1879,7 +1973,7 @@ func (x *ListRateLimitRulesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRateLimitRulesRequest.ProtoReflect.Descriptor instead.
 func (*ListRateLimitRulesRequest) Descriptor() ([]byte, []int) {
-	return file_config_proto_rawDescGZIP(), []int{25}
+	return file_config_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *ListRateLimitRulesRequest) GetPage() int32 {
@@ -1906,7 +2000,7 @@ type ListRateLimitRulesResponse struct {
 
 func (x *ListRateLimitRulesResponse) Reset() {
 	*x = ListRateLimitRulesResponse{}
-	mi := &file_config_proto_msgTypes[26]
+	mi := &file_config_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1918,7 +2012,7 @@ func (x *ListRateLimitRulesResponse) String() string {
 func (*ListRateLimitRulesResponse) ProtoMessage() {}
 
 func (x *ListRateLimitRulesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[26]
+	mi := &file_config_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1931,7 +2025,7 @@ func (x *ListRateLimitRulesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRateLimitRulesResponse.ProtoReflect.Descriptor instead.
 func (*ListRateLimitRulesResponse) Descriptor() ([]byte, []int) {
-	return file_config_proto_rawDescGZIP(), []int{26}
+	return file_config_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ListRateLimitRulesResponse) GetRules() []*RateLimitRule {
@@ -1961,7 +2055,7 @@ type WatchConfigRequest struct {
 
 func (x *WatchConfigRequest) Reset() {
 	*x = WatchConfigRequest{}
-	mi := &file_config_proto_msgTypes[27]
+	mi := &file_config_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1973,7 +2067,7 @@ func (x *WatchConfigRequest) String() string {
 func (*WatchConfigRequest) ProtoMessage() {}
 
 func (x *WatchConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[27]
+	mi := &file_config_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1986,7 +2080,7 @@ func (x *WatchConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchConfigRequest.ProtoReflect.Descriptor instead.
 func (*WatchConfigRequest) Descriptor() ([]byte, []int) {
-	return file_config_proto_rawDescGZIP(), []int{27}
+	return file_config_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *WatchConfigRequest) GetWatchRoutes() bool {
@@ -2025,7 +2119,7 @@ type ConfigUpdate struct {
 
 func (x *ConfigUpdate) Reset() {
 	*x = ConfigUpdate{}
-	mi := &file_config_proto_msgTypes[28]
+	mi := &file_config_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2037,7 +2131,7 @@ func (x *ConfigUpdate) String() string {
 func (*ConfigUpdate) ProtoMessage() {}
 
 func (x *ConfigUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[28]
+	mi := &file_config_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2050,7 +2144,7 @@ func (x *ConfigUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigUpdate.ProtoReflect.Descriptor instead.
 func (*ConfigUpdate) Descriptor() ([]byte, []int) {
-	return file_config_proto_rawDescGZIP(), []int{28}
+	return file_config_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *ConfigUpdate) GetType() ConfigUpdateType {
@@ -2120,7 +2214,7 @@ var File_config_proto protoreflect.FileDescriptor
 
 const file_config_proto_rawDesc = "" +
 	"\n" +
-	"\fconfig.proto\x12\x0fprism.config.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xbc\x05\n" +
+	"\fconfig.proto\x12\x0fprism.config.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xf3\x05\n" +
 	"\x05Route\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
@@ -2143,7 +2237,8 @@ const file_config_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x1a:\n" +
+	"updated_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x125\n" +
+	"\x06mirror\x18\x10 \x01(\v2\x1d.prism.config.v1.MirrorConfigR\x06mirror\x1a:\n" +
 	"\fHeadersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a;\n" +
@@ -2168,7 +2263,19 @@ const file_config_proto_rawDesc = "" +
 	"\x0fallowed_headers\x18\x03 \x03(\tR\x0eallowedHeaders\x12'\n" +
 	"\x0fexposed_headers\x18\x04 \x03(\tR\x0eexposedHeaders\x12+\n" +
 	"\x11allow_credentials\x18\x05 \x01(\bR\x10allowCredentials\x12\x17\n" +
-	"\amax_age\x18\x06 \x01(\x05R\x06maxAge\"\xb8\x03\n" +
+	"\amax_age\x18\x06 \x01(\x05R\x06maxAge\"\xd9\x02\n" +
+	"\fMirrorConfig\x12\x18\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x1f\n" +
+	"\vupstream_id\x18\x02 \x01(\tR\n" +
+	"upstreamId\x12+\n" +
+	"\x11sample_percentage\x18\x03 \x01(\x01R\x10samplePercentage\x12\x1d\n" +
+	"\n" +
+	"timeout_ms\x18\x04 \x01(\x05R\ttimeoutMs\x12*\n" +
+	"\x11log_response_diff\x18\x05 \x01(\bR\x0flogResponseDiff\x12U\n" +
+	"\x0eheaders_to_add\x18\x06 \x03(\v2/.prism.config.v1.MirrorConfig.HeadersToAddEntryR\fheadersToAdd\x1a?\n" +
+	"\x11HeadersToAddEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xb8\x03\n" +
 	"\bUpstream\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x121\n" +
@@ -2329,7 +2436,7 @@ func file_config_proto_rawDescGZIP() []byte {
 }
 
 var file_config_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_config_proto_msgTypes = make([]protoimpl.MessageInfo, 32)
+var file_config_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
 var file_config_proto_goTypes = []any{
 	(LoadBalancerAlgorithm)(0),         // 0: prism.config.v1.LoadBalancerAlgorithm
 	(RateLimitStrategy)(0),             // 1: prism.config.v1.RateLimitStrategy
@@ -2338,104 +2445,108 @@ var file_config_proto_goTypes = []any{
 	(*Route)(nil),                      // 4: prism.config.v1.Route
 	(*RouteMiddleware)(nil),            // 5: prism.config.v1.RouteMiddleware
 	(*CORSConfig)(nil),                 // 6: prism.config.v1.CORSConfig
-	(*Upstream)(nil),                   // 7: prism.config.v1.Upstream
-	(*Target)(nil),                     // 8: prism.config.v1.Target
-	(*LoadBalancerConfig)(nil),         // 9: prism.config.v1.LoadBalancerConfig
-	(*HealthCheckConfig)(nil),          // 10: prism.config.v1.HealthCheckConfig
-	(*CircuitBreakerConfig)(nil),       // 11: prism.config.v1.CircuitBreakerConfig
-	(*UpstreamHealth)(nil),             // 12: prism.config.v1.UpstreamHealth
-	(*TargetHealth)(nil),               // 13: prism.config.v1.TargetHealth
-	(*RateLimitRule)(nil),              // 14: prism.config.v1.RateLimitRule
-	(*CreateRouteRequest)(nil),         // 15: prism.config.v1.CreateRouteRequest
-	(*GetRouteRequest)(nil),            // 16: prism.config.v1.GetRouteRequest
-	(*UpdateRouteRequest)(nil),         // 17: prism.config.v1.UpdateRouteRequest
-	(*DeleteRouteRequest)(nil),         // 18: prism.config.v1.DeleteRouteRequest
-	(*ListRoutesRequest)(nil),          // 19: prism.config.v1.ListRoutesRequest
-	(*ListRoutesResponse)(nil),         // 20: prism.config.v1.ListRoutesResponse
-	(*RegisterUpstreamRequest)(nil),    // 21: prism.config.v1.RegisterUpstreamRequest
-	(*DeregisterUpstreamRequest)(nil),  // 22: prism.config.v1.DeregisterUpstreamRequest
-	(*ListUpstreamsRequest)(nil),       // 23: prism.config.v1.ListUpstreamsRequest
-	(*ListUpstreamsResponse)(nil),      // 24: prism.config.v1.ListUpstreamsResponse
-	(*GetUpstreamHealthRequest)(nil),   // 25: prism.config.v1.GetUpstreamHealthRequest
-	(*CreateRateLimitRuleRequest)(nil), // 26: prism.config.v1.CreateRateLimitRuleRequest
-	(*UpdateRateLimitRuleRequest)(nil), // 27: prism.config.v1.UpdateRateLimitRuleRequest
-	(*DeleteRateLimitRuleRequest)(nil), // 28: prism.config.v1.DeleteRateLimitRuleRequest
-	(*ListRateLimitRulesRequest)(nil),  // 29: prism.config.v1.ListRateLimitRulesRequest
-	(*ListRateLimitRulesResponse)(nil), // 30: prism.config.v1.ListRateLimitRulesResponse
-	(*WatchConfigRequest)(nil),         // 31: prism.config.v1.WatchConfigRequest
-	(*ConfigUpdate)(nil),               // 32: prism.config.v1.ConfigUpdate
-	nil,                                // 33: prism.config.v1.Route.HeadersEntry
-	nil,                                // 34: prism.config.v1.Route.MetadataEntry
-	nil,                                // 35: prism.config.v1.Target.MetadataEntry
-	(*timestamppb.Timestamp)(nil),      // 36: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),              // 37: google.protobuf.Empty
+	(*MirrorConfig)(nil),               // 7: prism.config.v1.MirrorConfig
+	(*Upstream)(nil),                   // 8: prism.config.v1.Upstream
+	(*Target)(nil),                     // 9: prism.config.v1.Target
+	(*LoadBalancerConfig)(nil),         // 10: prism.config.v1.LoadBalancerConfig
+	(*HealthCheckConfig)(nil),          // 11: prism.config.v1.HealthCheckConfig
+	(*CircuitBreakerConfig)(nil),       // 12: prism.config.v1.CircuitBreakerConfig
+	(*UpstreamHealth)(nil),             // 13: prism.config.v1.UpstreamHealth
+	(*TargetHealth)(nil),               // 14: prism.config.v1.TargetHealth
+	(*RateLimitRule)(nil),              // 15: prism.config.v1.RateLimitRule
+	(*CreateRouteRequest)(nil),         // 16: prism.config.v1.CreateRouteRequest
+	(*GetRouteRequest)(nil),            // 17: prism.config.v1.GetRouteRequest
+	(*UpdateRouteRequest)(nil),         // 18: prism.config.v1.UpdateRouteRequest
+	(*DeleteRouteRequest)(nil),         // 19: prism.config.v1.DeleteRouteRequest
+	(*ListRoutesRequest)(nil),          // 20: prism.config.v1.ListRoutesRequest
+	(*ListRoutesResponse)(nil),         // 21: prism.config.v1.ListRoutesResponse
+	(*RegisterUpstreamRequest)(nil),    // 22: prism.config.v1.RegisterUpstreamRequest
+	(*DeregisterUpstreamRequest)(nil),  // 23: prism.config.v1.DeregisterUpstreamRequest
+	(*ListUpstreamsRequest)(nil),       // 24: prism.config.v1.ListUpstreamsRequest
+	(*ListUpstreamsResponse)(nil),      // 25: prism.config.v1.ListUpstreamsResponse
+	(*GetUpstreamHealthRequest)(nil),   // 26: prism.config.v1.GetUpstreamHealthRequest
+	(*CreateRateLimitRuleRequest)(nil), // 27: prism.config.v1.CreateRateLimitRuleRequest
+	(*UpdateRateLimitRuleRequest)(nil), // 28: prism.config.v1.UpdateRateLimitRuleRequest
+	(*DeleteRateLimitRuleRequest)(nil), // 29: prism.config.v1.DeleteRateLimitRuleRequest
+	(*ListRateLimitRulesRequest)(nil),  // 30: prism.config.v1.ListRateLimitRulesRequest
+	(*ListRateLimitRulesResponse)(nil), // 31: prism.config.v1.ListRateLimitRulesResponse
+	(*WatchConfigRequest)(nil),         // 32: prism.config.v1.WatchConfigRequest
+	(*ConfigUpdate)(nil),               // 33: prism.config.v1.ConfigUpdate
+	nil,                                // 34: prism.config.v1.Route.HeadersEntry
+	nil,                                // 35: prism.config.v1.Route.MetadataEntry
+	nil,                                // 36: prism.config.v1.MirrorConfig.HeadersToAddEntry
+	nil,                                // 37: prism.config.v1.Target.MetadataEntry
+	(*timestamppb.Timestamp)(nil),      // 38: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),              // 39: google.protobuf.Empty
 }
 var file_config_proto_depIdxs = []int32{
-	33, // 0: prism.config.v1.Route.headers:type_name -> prism.config.v1.Route.HeadersEntry
+	34, // 0: prism.config.v1.Route.headers:type_name -> prism.config.v1.Route.HeadersEntry
 	5,  // 1: prism.config.v1.Route.middleware:type_name -> prism.config.v1.RouteMiddleware
-	34, // 2: prism.config.v1.Route.metadata:type_name -> prism.config.v1.Route.MetadataEntry
-	36, // 3: prism.config.v1.Route.created_at:type_name -> google.protobuf.Timestamp
-	36, // 4: prism.config.v1.Route.updated_at:type_name -> google.protobuf.Timestamp
-	6,  // 5: prism.config.v1.RouteMiddleware.cors_config:type_name -> prism.config.v1.CORSConfig
-	8,  // 6: prism.config.v1.Upstream.targets:type_name -> prism.config.v1.Target
-	9,  // 7: prism.config.v1.Upstream.load_balancer:type_name -> prism.config.v1.LoadBalancerConfig
-	10, // 8: prism.config.v1.Upstream.health_check:type_name -> prism.config.v1.HealthCheckConfig
-	11, // 9: prism.config.v1.Upstream.circuit_breaker:type_name -> prism.config.v1.CircuitBreakerConfig
-	36, // 10: prism.config.v1.Upstream.created_at:type_name -> google.protobuf.Timestamp
-	36, // 11: prism.config.v1.Upstream.updated_at:type_name -> google.protobuf.Timestamp
-	35, // 12: prism.config.v1.Target.metadata:type_name -> prism.config.v1.Target.MetadataEntry
-	0,  // 13: prism.config.v1.LoadBalancerConfig.algorithm:type_name -> prism.config.v1.LoadBalancerAlgorithm
-	13, // 14: prism.config.v1.UpstreamHealth.targets:type_name -> prism.config.v1.TargetHealth
-	36, // 15: prism.config.v1.TargetHealth.last_check:type_name -> google.protobuf.Timestamp
-	1,  // 16: prism.config.v1.RateLimitRule.strategy:type_name -> prism.config.v1.RateLimitStrategy
-	2,  // 17: prism.config.v1.RateLimitRule.scope:type_name -> prism.config.v1.RateLimitScope
-	36, // 18: prism.config.v1.RateLimitRule.created_at:type_name -> google.protobuf.Timestamp
-	36, // 19: prism.config.v1.RateLimitRule.updated_at:type_name -> google.protobuf.Timestamp
-	4,  // 20: prism.config.v1.CreateRouteRequest.route:type_name -> prism.config.v1.Route
-	4,  // 21: prism.config.v1.UpdateRouteRequest.route:type_name -> prism.config.v1.Route
-	4,  // 22: prism.config.v1.ListRoutesResponse.routes:type_name -> prism.config.v1.Route
-	7,  // 23: prism.config.v1.RegisterUpstreamRequest.upstream:type_name -> prism.config.v1.Upstream
-	7,  // 24: prism.config.v1.ListUpstreamsResponse.upstreams:type_name -> prism.config.v1.Upstream
-	14, // 25: prism.config.v1.CreateRateLimitRuleRequest.rule:type_name -> prism.config.v1.RateLimitRule
-	14, // 26: prism.config.v1.UpdateRateLimitRuleRequest.rule:type_name -> prism.config.v1.RateLimitRule
-	14, // 27: prism.config.v1.ListRateLimitRulesResponse.rules:type_name -> prism.config.v1.RateLimitRule
-	3,  // 28: prism.config.v1.ConfigUpdate.type:type_name -> prism.config.v1.ConfigUpdateType
-	4,  // 29: prism.config.v1.ConfigUpdate.route:type_name -> prism.config.v1.Route
-	7,  // 30: prism.config.v1.ConfigUpdate.upstream:type_name -> prism.config.v1.Upstream
-	14, // 31: prism.config.v1.ConfigUpdate.rate_limit_rule:type_name -> prism.config.v1.RateLimitRule
-	15, // 32: prism.config.v1.ConfigService.CreateRoute:input_type -> prism.config.v1.CreateRouteRequest
-	16, // 33: prism.config.v1.ConfigService.GetRoute:input_type -> prism.config.v1.GetRouteRequest
-	17, // 34: prism.config.v1.ConfigService.UpdateRoute:input_type -> prism.config.v1.UpdateRouteRequest
-	18, // 35: prism.config.v1.ConfigService.DeleteRoute:input_type -> prism.config.v1.DeleteRouteRequest
-	19, // 36: prism.config.v1.ConfigService.ListRoutes:input_type -> prism.config.v1.ListRoutesRequest
-	21, // 37: prism.config.v1.ConfigService.RegisterUpstream:input_type -> prism.config.v1.RegisterUpstreamRequest
-	22, // 38: prism.config.v1.ConfigService.DeregisterUpstream:input_type -> prism.config.v1.DeregisterUpstreamRequest
-	23, // 39: prism.config.v1.ConfigService.ListUpstreams:input_type -> prism.config.v1.ListUpstreamsRequest
-	25, // 40: prism.config.v1.ConfigService.GetUpstreamHealth:input_type -> prism.config.v1.GetUpstreamHealthRequest
-	26, // 41: prism.config.v1.ConfigService.CreateRateLimitRule:input_type -> prism.config.v1.CreateRateLimitRuleRequest
-	27, // 42: prism.config.v1.ConfigService.UpdateRateLimitRule:input_type -> prism.config.v1.UpdateRateLimitRuleRequest
-	28, // 43: prism.config.v1.ConfigService.DeleteRateLimitRule:input_type -> prism.config.v1.DeleteRateLimitRuleRequest
-	29, // 44: prism.config.v1.ConfigService.ListRateLimitRules:input_type -> prism.config.v1.ListRateLimitRulesRequest
-	31, // 45: prism.config.v1.ConfigService.WatchConfig:input_type -> prism.config.v1.WatchConfigRequest
-	4,  // 46: prism.config.v1.ConfigService.CreateRoute:output_type -> prism.config.v1.Route
-	4,  // 47: prism.config.v1.ConfigService.GetRoute:output_type -> prism.config.v1.Route
-	4,  // 48: prism.config.v1.ConfigService.UpdateRoute:output_type -> prism.config.v1.Route
-	37, // 49: prism.config.v1.ConfigService.DeleteRoute:output_type -> google.protobuf.Empty
-	20, // 50: prism.config.v1.ConfigService.ListRoutes:output_type -> prism.config.v1.ListRoutesResponse
-	7,  // 51: prism.config.v1.ConfigService.RegisterUpstream:output_type -> prism.config.v1.Upstream
-	37, // 52: prism.config.v1.ConfigService.DeregisterUpstream:output_type -> google.protobuf.Empty
-	24, // 53: prism.config.v1.ConfigService.ListUpstreams:output_type -> prism.config.v1.ListUpstreamsResponse
-	12, // 54: prism.config.v1.ConfigService.GetUpstreamHealth:output_type -> prism.config.v1.UpstreamHealth
-	14, // 55: prism.config.v1.ConfigService.CreateRateLimitRule:output_type -> prism.config.v1.RateLimitRule
-	14, // 56: prism.config.v1.ConfigService.UpdateRateLimitRule:output_type -> prism.config.v1.RateLimitRule
-	37, // 57: prism.config.v1.ConfigService.DeleteRateLimitRule:output_type -> google.protobuf.Empty
-	30, // 58: prism.config.v1.ConfigService.ListRateLimitRules:output_type -> prism.config.v1.ListRateLimitRulesResponse
-	32, // 59: prism.config.v1.ConfigService.WatchConfig:output_type -> prism.config.v1.ConfigUpdate
-	46, // [46:60] is the sub-list for method output_type
-	32, // [32:46] is the sub-list for method input_type
-	32, // [32:32] is the sub-list for extension type_name
-	32, // [32:32] is the sub-list for extension extendee
-	0,  // [0:32] is the sub-list for field type_name
+	35, // 2: prism.config.v1.Route.metadata:type_name -> prism.config.v1.Route.MetadataEntry
+	38, // 3: prism.config.v1.Route.created_at:type_name -> google.protobuf.Timestamp
+	38, // 4: prism.config.v1.Route.updated_at:type_name -> google.protobuf.Timestamp
+	7,  // 5: prism.config.v1.Route.mirror:type_name -> prism.config.v1.MirrorConfig
+	6,  // 6: prism.config.v1.RouteMiddleware.cors_config:type_name -> prism.config.v1.CORSConfig
+	36, // 7: prism.config.v1.MirrorConfig.headers_to_add:type_name -> prism.config.v1.MirrorConfig.HeadersToAddEntry
+	9,  // 8: prism.config.v1.Upstream.targets:type_name -> prism.config.v1.Target
+	10, // 9: prism.config.v1.Upstream.load_balancer:type_name -> prism.config.v1.LoadBalancerConfig
+	11, // 10: prism.config.v1.Upstream.health_check:type_name -> prism.config.v1.HealthCheckConfig
+	12, // 11: prism.config.v1.Upstream.circuit_breaker:type_name -> prism.config.v1.CircuitBreakerConfig
+	38, // 12: prism.config.v1.Upstream.created_at:type_name -> google.protobuf.Timestamp
+	38, // 13: prism.config.v1.Upstream.updated_at:type_name -> google.protobuf.Timestamp
+	37, // 14: prism.config.v1.Target.metadata:type_name -> prism.config.v1.Target.MetadataEntry
+	0,  // 15: prism.config.v1.LoadBalancerConfig.algorithm:type_name -> prism.config.v1.LoadBalancerAlgorithm
+	14, // 16: prism.config.v1.UpstreamHealth.targets:type_name -> prism.config.v1.TargetHealth
+	38, // 17: prism.config.v1.TargetHealth.last_check:type_name -> google.protobuf.Timestamp
+	1,  // 18: prism.config.v1.RateLimitRule.strategy:type_name -> prism.config.v1.RateLimitStrategy
+	2,  // 19: prism.config.v1.RateLimitRule.scope:type_name -> prism.config.v1.RateLimitScope
+	38, // 20: prism.config.v1.RateLimitRule.created_at:type_name -> google.protobuf.Timestamp
+	38, // 21: prism.config.v1.RateLimitRule.updated_at:type_name -> google.protobuf.Timestamp
+	4,  // 22: prism.config.v1.CreateRouteRequest.route:type_name -> prism.config.v1.Route
+	4,  // 23: prism.config.v1.UpdateRouteRequest.route:type_name -> prism.config.v1.Route
+	4,  // 24: prism.config.v1.ListRoutesResponse.routes:type_name -> prism.config.v1.Route
+	8,  // 25: prism.config.v1.RegisterUpstreamRequest.upstream:type_name -> prism.config.v1.Upstream
+	8,  // 26: prism.config.v1.ListUpstreamsResponse.upstreams:type_name -> prism.config.v1.Upstream
+	15, // 27: prism.config.v1.CreateRateLimitRuleRequest.rule:type_name -> prism.config.v1.RateLimitRule
+	15, // 28: prism.config.v1.UpdateRateLimitRuleRequest.rule:type_name -> prism.config.v1.RateLimitRule
+	15, // 29: prism.config.v1.ListRateLimitRulesResponse.rules:type_name -> prism.config.v1.RateLimitRule
+	3,  // 30: prism.config.v1.ConfigUpdate.type:type_name -> prism.config.v1.ConfigUpdateType
+	4,  // 31: prism.config.v1.ConfigUpdate.route:type_name -> prism.config.v1.Route
+	8,  // 32: prism.config.v1.ConfigUpdate.upstream:type_name -> prism.config.v1.Upstream
+	15, // 33: prism.config.v1.ConfigUpdate.rate_limit_rule:type_name -> prism.config.v1.RateLimitRule
+	16, // 34: prism.config.v1.ConfigService.CreateRoute:input_type -> prism.config.v1.CreateRouteRequest
+	17, // 35: prism.config.v1.ConfigService.GetRoute:input_type -> prism.config.v1.GetRouteRequest
+	18, // 36: prism.config.v1.ConfigService.UpdateRoute:input_type -> prism.config.v1.UpdateRouteRequest
+	19, // 37: prism.config.v1.ConfigService.DeleteRoute:input_type -> prism.config.v1.DeleteRouteRequest
+	20, // 38: prism.config.v1.ConfigService.ListRoutes:input_type -> prism.config.v1.ListRoutesRequest
+	22, // 39: prism.config.v1.ConfigService.RegisterUpstream:input_type -> prism.config.v1.RegisterUpstreamRequest
+	23, // 40: prism.config.v1.ConfigService.DeregisterUpstream:input_type -> prism.config.v1.DeregisterUpstreamRequest
+	24, // 41: prism.config.v1.ConfigService.ListUpstreams:input_type -> prism.config.v1.ListUpstreamsRequest
+	26, // 42: prism.config.v1.ConfigService.GetUpstreamHealth:input_type -> prism.config.v1.GetUpstreamHealthRequest
+	27, // 43: prism.config.v1.ConfigService.CreateRateLimitRule:input_type -> prism.config.v1.CreateRateLimitRuleRequest
+	28, // 44: prism.config.v1.ConfigService.UpdateRateLimitRule:input_type -> prism.config.v1.UpdateRateLimitRuleRequest
+	29, // 45: prism.config.v1.ConfigService.DeleteRateLimitRule:input_type -> prism.config.v1.DeleteRateLimitRuleRequest
+	30, // 46: prism.config.v1.ConfigService.ListRateLimitRules:input_type -> prism.config.v1.ListRateLimitRulesRequest
+	32, // 47: prism.config.v1.ConfigService.WatchConfig:input_type -> prism.config.v1.WatchConfigRequest
+	4,  // 48: prism.config.v1.ConfigService.CreateRoute:output_type -> prism.config.v1.Route
+	4,  // 49: prism.config.v1.ConfigService.GetRoute:output_type -> prism.config.v1.Route
+	4,  // 50: prism.config.v1.ConfigService.UpdateRoute:output_type -> prism.config.v1.Route
+	39, // 51: prism.config.v1.ConfigService.DeleteRoute:output_type -> google.protobuf.Empty
+	21, // 52: prism.config.v1.ConfigService.ListRoutes:output_type -> prism.config.v1.ListRoutesResponse
+	8,  // 53: prism.config.v1.ConfigService.RegisterUpstream:output_type -> prism.config.v1.Upstream
+	39, // 54: prism.config.v1.ConfigService.DeregisterUpstream:output_type -> google.protobuf.Empty
+	25, // 55: prism.config.v1.ConfigService.ListUpstreams:output_type -> prism.config.v1.ListUpstreamsResponse
+	13, // 56: prism.config.v1.ConfigService.GetUpstreamHealth:output_type -> prism.config.v1.UpstreamHealth
+	15, // 57: prism.config.v1.ConfigService.CreateRateLimitRule:output_type -> prism.config.v1.RateLimitRule
+	15, // 58: prism.config.v1.ConfigService.UpdateRateLimitRule:output_type -> prism.config.v1.RateLimitRule
+	39, // 59: prism.config.v1.ConfigService.DeleteRateLimitRule:output_type -> google.protobuf.Empty
+	31, // 60: prism.config.v1.ConfigService.ListRateLimitRules:output_type -> prism.config.v1.ListRateLimitRulesResponse
+	33, // 61: prism.config.v1.ConfigService.WatchConfig:output_type -> prism.config.v1.ConfigUpdate
+	48, // [48:62] is the sub-list for method output_type
+	34, // [34:48] is the sub-list for method input_type
+	34, // [34:34] is the sub-list for extension type_name
+	34, // [34:34] is the sub-list for extension extendee
+	0,  // [0:34] is the sub-list for field type_name
 }
 
 func init() { file_config_proto_init() }
@@ -2443,7 +2554,7 @@ func file_config_proto_init() {
 	if File_config_proto != nil {
 		return
 	}
-	file_config_proto_msgTypes[28].OneofWrappers = []any{
+	file_config_proto_msgTypes[29].OneofWrappers = []any{
 		(*ConfigUpdate_Route)(nil),
 		(*ConfigUpdate_Upstream)(nil),
 		(*ConfigUpdate_RateLimitRule)(nil),
@@ -2454,7 +2565,7 @@ func file_config_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_config_proto_rawDesc), len(file_config_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   32,
+			NumMessages:   34,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

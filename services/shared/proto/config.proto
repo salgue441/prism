@@ -64,6 +64,9 @@ message Route {
 
   google.protobuf.Timestamp created_at = 14;
   google.protobuf.Timestamp updated_at = 15;
+
+  // Traffic mirroring
+  MirrorConfig mirror = 16;           // Optional mirror configuration
 }
 
 message RouteMiddleware {
@@ -84,6 +87,16 @@ message CORSConfig {
   repeated string exposed_headers = 4;
   bool allow_credentials = 5;
   int32 max_age = 6;
+}
+
+// Traffic mirroring configuration
+message MirrorConfig {
+  bool enabled = 1;                       // Enable/disable mirroring for this route
+  string upstream_id = 2;                 // Shadow upstream to mirror requests to
+  double sample_percentage = 3;           // 0.0-100.0, percentage of requests to mirror
+  int32 timeout_ms = 4;                   // Timeout for mirror requests (default: 5000)
+  bool log_response_diff = 5;             // Log status code differences
+  map<string, string> headers_to_add = 6; // Additional headers for mirror requests
 }
 
 // =============================================================================

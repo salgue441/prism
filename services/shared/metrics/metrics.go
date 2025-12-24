@@ -49,6 +49,10 @@ type Metrics struct {
 	rateLimitHits    *prometheus.CounterVec
 	rateLimitDropped *prometheus.CounterVec
 
+	// Traffic mirroring metrics
+	mirrorRequestsTotal   *prometheus.CounterVec
+	mirrorRequestDuration *prometheus.HistogramVec
+
 	// Connection pool metrics
 	dbConnectionsActive *prometheus.GaugeVec
 	dbConnectionsIdle   *prometheus.GaugeVec
@@ -226,6 +230,28 @@ func New(cfg Config) *Metrics {
 		[]string{LabelPath},
 	)
 
+	// Traffic mirroring metrics
+	m.mirrorRequestsTotal = factory.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: cfg.Namespace,
+			Subsystem: cfg.Subsystem,
+			Name:      "mirror_requests_total",
+			Help:      "Total number of mirror requests.",
+		},
+		[]string{LabelUpstream, LabelStatus},
+	)
+
+	m.mirrorRequestDuration = factory.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: cfg.Namespace,
+			Subsystem: cfg.Subsystem,
+			Name:      "mirror_request_duration_seconds",
+			Help:      "Mirror request latency in seconds.",
+			Buckets:   prometheus.DefBuckets,
+		},
+		[]string{LabelUpstream},
+	)
+
 	// Database connection pool metrics
 	m.dbConnectionsActive = factory.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -325,6 +351,14 @@ func (m *Metrics) RecordRateLimitHit(path string) {
 // RecordRateLimitDrop records a dropped request due to rate limiting.
 func (m *Metrics) RecordRateLimitDrop(path string) {
 	m.rateLimitDropped.WithLabelValues(path).Inc()
+}
+
+// --- Traffic Mirroring Metrics ---
+
+// RecordMirrorRequest records a mirror request.
+func (m *Metrics) RecordMirrorRequest(upstream, status string, duration time.Duration) {
+	m.mirrorRequestsTotal.WithLabelValues(upstream, status).Inc()
+	m.mirrorRequestDuration.WithLabelValues(upstream).Observe(duration.Seconds())
 }
 
 // --- Database Metrics ---

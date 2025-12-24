@@ -37,6 +37,16 @@ func ProtoRouteToRouter(pbRoute *pb.Route, upstream *router.Upstream) *router.Ro
 		route.RateLimitKey = pbRoute.Middleware.RateLimitRuleId
 	}
 
+	// Extract mirror configuration
+	if pbRoute.Mirror != nil && pbRoute.Mirror.Enabled {
+		route.MirrorEnabled = true
+		route.MirrorUpstreamID = pbRoute.Mirror.UpstreamId
+		route.MirrorSamplePct = pbRoute.Mirror.SamplePercentage
+		route.MirrorTimeoutMs = int(pbRoute.Mirror.TimeoutMs)
+		route.MirrorLogDiff = pbRoute.Mirror.LogResponseDiff
+		route.MirrorHeaders = pbRoute.Mirror.HeadersToAdd
+	}
+
 	return route
 }
 

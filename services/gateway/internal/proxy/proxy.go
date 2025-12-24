@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/carlossalguero/prism/services/gateway/internal/circuitbreaker"
+	"github.com/carlossalguero/prism/services/gateway/internal/mirror"
 	"github.com/carlossalguero/prism/services/shared/errors"
 	"github.com/carlossalguero/prism/services/shared/logger"
 )
@@ -30,6 +31,7 @@ type Config struct {
 	MaxIdleConns           int
 	IdleConnTimeout        time.Duration
 	CircuitBreakerRegistry *circuitbreaker.Registry
+	MirrorHandler          *mirror.Handler
 }
 
 // Proxy is a reverse proxy that forwards requests to upstream targets.
@@ -43,6 +45,7 @@ type Proxy struct {
 	preserveHost    bool
 	trustXForwarded bool
 	cbRegistry      *circuitbreaker.Registry
+	mirrorHandler   *mirror.Handler
 	logger          *logger.Logger
 }
 
@@ -85,6 +88,7 @@ func New(cfg Config) *Proxy {
 		preserveHost:    cfg.PreserveHost,
 		trustXForwarded: cfg.TrustXForwarded,
 		cbRegistry:      cfg.CircuitBreakerRegistry,
+		mirrorHandler:   cfg.MirrorHandler,
 		logger:          logger.Default().WithComponent("proxy"),
 	}
 
@@ -108,7 +112,19 @@ type contextKey string
 const (
 	// TargetKey is the context key for the target URL.
 	TargetKey contextKey = "proxy_target"
+	// MirrorConfigKey is the context key for mirror configuration.
+	MirrorConfigKey contextKey = "proxy_mirror_config"
 )
+
+// MirrorConfig holds mirror configuration passed via context.
+type MirrorConfig struct {
+	Enabled      bool
+	UpstreamID   string
+	SamplePct    float64
+	TimeoutMs    int
+	LogDiff      bool
+	HeadersToAdd map[string]string
+}
 
 // ServeHTTP implements http.Handler.
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -119,6 +135,40 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check for mirror configuration
+	var mirrorCfg *mirror.Config
+	var mirrorReq *http.Request
+	var clonedBody []byte
+
+	if p.mirrorHandler != nil {
+		if mc, ok := r.Context().Value(MirrorConfigKey).(*MirrorConfig); ok && mc != nil && mc.Enabled {
+			mirrorCfg = &mirror.Config{
+				Enabled:      mc.Enabled,
+				UpstreamID:   mc.UpstreamID,
+				SamplePct:    mc.SamplePct,
+				TimeoutMs:    mc.TimeoutMs,
+				LogDiff:      mc.LogDiff,
+				HeadersToAdd: mc.HeadersToAdd,
+			}
+
+			// Check if we should mirror this request based on sampling
+			if p.mirrorHandler.ShouldMirror(mirrorCfg) {
+				// Clone body before forwarding
+				var err error
+				r.Body, clonedBody, err = mirror.CloneBody(r.Body, 10*1024*1024) // 10MB max
+				if err != nil {
+					p.logger.Warn("failed to clone body for mirroring", "error", err)
+				} else if len(clonedBody) > 0 || r.ContentLength == 0 {
+					// Prepare mirror request
+					mirrorReq, err = p.mirrorHandler.PrepareRequest(r, clonedBody, mirrorCfg)
+					if err != nil {
+						p.logger.Warn("failed to prepare mirror request", "error", err)
+					}
+				}
+			}
+		}
+	}
+
 	// Apply request timeout
 	ctx := r.Context()
 	if p.requestTimeout > 0 {
@@ -127,6 +177,9 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 		r = r.WithContext(ctx)
 	}
+
+	// Wrap response writer to capture status code for mirroring
+	wrappedWriter := &statusCapturingWriter{ResponseWriter: w, status: http.StatusOK}
 
 	// Check circuit breaker if registry is configured
 	if p.cbRegistry != nil {
@@ -160,21 +213,54 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ErrorHandler:   p.errorHandler,
 		}
 
-		proxy.ServeHTTP(w, r)
-		return
+		proxy.ServeHTTP(wrappedWriter, r)
+	} else {
+		// Create the reverse proxy for this request (no circuit breaker)
+		proxy := &httputil.ReverseProxy{
+			Director:       p.director(target),
+			Transport:      p.transport,
+			FlushInterval:  p.flushInterval,
+			BufferPool:     p.bufferPool,
+			ModifyResponse: p.modifyResponse,
+			ErrorHandler:   p.errorHandler,
+		}
+
+		proxy.ServeHTTP(wrappedWriter, r)
 	}
 
-	// Create the reverse proxy for this request (no circuit breaker)
-	proxy := &httputil.ReverseProxy{
-		Director:       p.director(target),
-		Transport:      p.transport,
-		FlushInterval:  p.flushInterval,
-		BufferPool:     p.bufferPool,
-		ModifyResponse: p.modifyResponse,
-		ErrorHandler:   p.errorHandler,
+	// Fire mirror request asynchronously after primary request completes
+	if mirrorReq != nil && mirrorCfg != nil {
+		requestID := r.Header.Get("X-Request-ID")
+		p.mirrorHandler.Execute(mirrorReq, mirrorCfg, wrappedWriter.status, requestID)
 	}
+}
 
-	proxy.ServeHTTP(w, r)
+// statusCapturingWriter wraps http.ResponseWriter to capture status code.
+type statusCapturingWriter struct {
+	http.ResponseWriter
+	status      int
+	wroteHeader bool
+}
+
+func (w *statusCapturingWriter) WriteHeader(code int) {
+	if !w.wroteHeader {
+		w.status = code
+		w.wroteHeader = true
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *statusCapturingWriter) Write(b []byte) (int, error) {
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+func (w *statusCapturingWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 // circuitBreakerTransport wraps an http.RoundTripper to record results for circuit breaker.
