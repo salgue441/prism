@@ -227,6 +227,21 @@ func (c *Checker) handleLiveness(w http.ResponseWriter) {
 	}
 }
 
+// HealthHandler returns an http.HandlerFunc for the main health endpoint.
+func (c *Checker) HealthHandler(w http.ResponseWriter, r *http.Request) {
+	c.handleHealth(r.Context(), w, true)
+}
+
+// LiveHandler returns an http.HandlerFunc for liveness checks.
+func (c *Checker) LiveHandler(w http.ResponseWriter, r *http.Request) {
+	c.handleLiveness(w)
+}
+
+// ReadyHandler returns an http.HandlerFunc for readiness checks.
+func (c *Checker) ReadyHandler(w http.ResponseWriter, r *http.Request) {
+	c.handleHealth(r.Context(), w, true)
+}
+
 // ServeHTTP starts an HTTP server for health checks on the given address.
 func (c *Checker) ServeHTTP(addr string) error {
 	mux := http.NewServeMux()
