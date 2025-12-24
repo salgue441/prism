@@ -2,8 +2,8 @@
 
 # Variables
 BINARY_DIR := bin
-PROTO_DIR := api/proto
-PROTO_OUT := api/proto/gen
+PROTO_DIR := services/shared/proto
+PROTO_OUT := services/shared/proto/gen
 GO := go
 GOFLAGS := -v
 DOCKER_COMPOSE := docker compose -f deploy/docker-compose/docker-compose.yml
@@ -29,30 +29,30 @@ build: build-gateway build-auth build-config ## Build all services
 build-gateway: ## Build gateway service
 	@echo "Building gateway..."
 	@mkdir -p $(BINARY_DIR)
-	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_DIR)/gateway ./cmd/gateway
+	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_DIR)/gateway ./services/gateway/cmd
 
 build-auth: ## Build auth service
 	@echo "Building auth service..."
 	@mkdir -p $(BINARY_DIR)
-	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_DIR)/auth ./cmd/auth
+	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_DIR)/auth ./services/auth/cmd
 
 build-config: ## Build config service
 	@echo "Building config service..."
 	@mkdir -p $(BINARY_DIR)
-	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_DIR)/config ./cmd/config
+	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_DIR)/config ./services/config/cmd
 
 # =============================================================================
 # Development targets
 # =============================================================================
 
 run-gateway: ## Run gateway service locally
-	$(GO) run ./cmd/gateway
+	$(GO) run ./services/gateway/cmd
 
 run-auth: ## Run auth service locally
-	$(GO) run ./cmd/auth
+	$(GO) run ./services/auth/cmd
 
 run-config: ## Run config service locally
-	$(GO) run ./cmd/config
+	$(GO) run ./services/config/cmd
 
 # =============================================================================
 # Protocol Buffers
