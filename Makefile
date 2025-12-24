@@ -64,6 +64,7 @@ proto: ## Generate protobuf code
 	protoc --go_out=$(PROTO_OUT) --go_opt=paths=source_relative \
 		--go-grpc_out=$(PROTO_OUT) --go-grpc_opt=paths=source_relative \
 		-I $(PROTO_DIR) \
+		-I $(HOME)/.local/include \
 		$(PROTO_DIR)/*.proto
 
 proto-clean: ## Clean generated protobuf files
