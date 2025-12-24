@@ -1,0 +1,78 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+coverage.out
+coverage.html
+*.coverprofile
+
+# Dependency directories
+vendor/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment files
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Keys and secrets
+keys/
+*.pem
+*.key
+*.crt
+!keys/.gitkeep
+
+# Logs
+*.log
+logs/
+
+# Build artifacts
+dist/
+build/
+
+# Generated protobuf files (optional - some prefer to commit these)
+# api/proto/gen/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Docker volumes (if mounted locally)
+.docker-data/
+
+# Profiling
+*.prof
+*.pprof
+
+# Air live reload (if used)
+.air.toml
+tmp/
+
+# Delve debugger
+__debug_bin
+
+# OS specific
+Thumbs.db
+ehthumbs.db
