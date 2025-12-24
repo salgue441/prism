@@ -1,40 +1,130 @@
 # Prism
 
-A production-ready, microservices-based **Reverse Proxy API Gateway** built with Go. Prism provides authentication, rate limiting, dynamic routing, and comprehensive observability out of the box.
+<p align="center">
+  <strong>Production-Ready Microservices API Gateway</strong>
+</p>
+
+<p align="center">
+  <a href="#features">Features</a> •
+  <a href="#quick-start">Quick Start</a> •
+  <a href="#architecture">Architecture</a> •
+  <a href="docs/guides">Documentation</a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat&logo=go" alt="Go Version">
+  <img src="https://img.shields.io/badge/gRPC-Enabled-4285F4?style=flat&logo=google" alt="gRPC">
+  <img src="https://img.shields.io/badge/Docker-Ready-2496ED?style=flat&logo=docker" alt="Docker">
+  <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License">
+</p>
+
+---
+
+**Prism** is a high-performance, microservices-based reverse proxy API gateway built with Go. It provides authentication, authorization, rate limiting, circuit breaking, and comprehensive observability—everything you need for production-grade API management.
 
 ## Features
 
-- **Reverse Proxy** - High-performance HTTP/HTTPS reverse proxy with load balancing
-- **Authentication** - JWT (RS256) and OAuth 2.0 (Google, GitHub) support
-- **API Keys** - Scoped API key management for service-to-service communication
-- **Rate Limiting** - Token bucket algorithm with per-IP and per-user limits
-- **Dynamic Routing** - Configuration-driven routing with hot-reload support
-- **Service Discovery** - Consul integration for upstream service discovery
-- **Observability** - Structured logging with Grafana + Loki stack
-- **Production Ready** - Health checks, graceful shutdown, Docker support
+| Category | Features |
+|----------|----------|
+| **Routing** | Dynamic routing, path rewriting, load balancing (round-robin, weighted, least-conn) |
+| **Security** | JWT (RS256), OAuth 2.0 (Google, GitHub), API keys, TLS/HTTPS |
+| **Resilience** | Circuit breaker, rate limiting (token bucket), request timeouts, retries |
+| **Observability** | Prometheus metrics, structured logging (Loki), Grafana dashboards |
+| **Operations** | Health checks, graceful shutdown, hot-reload config, Docker support |
 
 ## Architecture
 
+```mermaid
+flowchart TB
+    subgraph Clients
+        Web[Web App]
+        Mobile[Mobile App]
+        Service[Service]
+    end
+
+    subgraph Gateway["Prism Gateway :8080"]
+        MW[Middleware Chain]
+        RT[Router]
+        LB[Load Balancer]
+        CB[Circuit Breaker]
+    end
+
+    subgraph Services
+        Auth["Auth Service\n:50051 gRPC"]
+        Config["Config Service\n:50052 gRPC"]
+    end
+
+    subgraph Storage
+        PG[(PostgreSQL)]
+        Consul[(Consul)]
+    end
+
+    subgraph Observability
+        Prom[Prometheus]
+        Loki[Loki]
+        Graf[Grafana]
+    end
+
+    subgraph Upstreams
+        API1[API Server 1]
+        API2[API Server 2]
+        API3[API Server 3]
+    end
+
+    Web --> MW
+    Mobile --> MW
+    Service --> MW
+
+    MW --> RT
+    RT --> LB
+    LB --> CB
+    CB --> API1
+    CB --> API2
+    CB --> API3
+
+    MW -.->|validate| Auth
+    RT -.->|routes| Config
+
+    Auth --> PG
+    Config --> Consul
+
+    Gateway -.->|metrics| Prom
+    Gateway -.->|logs| Loki
+    Prom --> Graf
+    Loki --> Graf
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                         Prism Gateway                            │
-├──────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  ┌─────────┐    ┌─────────────┐    ┌──────────────────────────┐ │
-│  │ Gateway │───▶│ Auth Service │───▶│ PostgreSQL (Users/Keys) │ │
-│  │ :8080   │    │ :50051 gRPC  │    └──────────────────────────┘ │
-│  └────┬────┘    └─────────────┘                                  │
-│       │                                                          │
-│       │         ┌──────────────┐    ┌──────────────────────────┐ │
-│       └────────▶│Config Service│───▶│ Consul (Service Discovery)│ │
-│                 │ :50052 gRPC  │    └──────────────────────────┘ │
-│                 └──────────────┘                                  │
-│                                                                  │
-│  ┌─────────────────────────────────────────────────────────────┐ │
-│  │                    Observability Stack                       │ │
-│  │  Promtail ──▶ Loki ──▶ Grafana                              │ │
-│  └─────────────────────────────────────────────────────────────┘ │
-└──────────────────────────────────────────────────────────────────┘
+
+### Request Flow
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant G as Gateway
+    participant A as Auth Service
+    participant U as Upstream
+
+    C->>G: HTTP Request + JWT
+    G->>G: Rate Limit Check
+    G->>A: Validate Token (gRPC)
+    A-->>G: Token Claims
+    G->>G: Route Matching
+    G->>G: Circuit Breaker Check
+    G->>U: Proxy Request
+    U-->>G: Response
+    G-->>C: Response + Headers
+```
+
+### Middleware Chain
+
+```mermaid
+flowchart LR
+    A[Request ID] --> B[Logging]
+    B --> C[Recovery]
+    C --> D[Metrics]
+    D --> E[Rate Limit]
+    E --> F[Auth]
+    F --> G[CORS]
+    G --> H[Proxy]
 ```
 
 ## Quick Start
@@ -43,108 +133,50 @@ A production-ready, microservices-based **Reverse Proxy API Gateway** built with
 
 - Go 1.23+
 - Docker & Docker Compose
-- OpenSSL (for key generation)
+- Make
 
-### Local Development
+### Run with Docker
 
 ```bash
-# Clone the repository
+# Clone and start
 git clone https://github.com/carlossalguero/prism.git
 cd prism
 
-# Generate JWT signing keys
-./scripts/generate-keys.sh
+# Generate JWT keys
+make generate-keys
 
-# Start infrastructure (PostgreSQL, Consul, Loki, Grafana)
+# Start all services
 make docker-up
 
-# Run services locally
-make run-auth   # Terminal 1
-make run-gateway # Terminal 2
+# Verify
+curl http://localhost:8080/health
 ```
 
-### Docker Compose (Full Stack)
+### Run Locally
 
 ```bash
-# Start everything
-cd deploy/docker-compose
-docker compose up -d
+# Start infrastructure
+make docker-up
 
-# View logs
-docker compose logs -f
+# Build services
+make build
 
-# Access services
-# Gateway:  http://localhost:8080
-# Grafana:  http://localhost:3000 (admin/admin)
-# Consul:   http://localhost:8500
+# Run (in separate terminals)
+./bin/auth
+./bin/gateway
 ```
 
-## Project Structure
+### Access Points
 
-```
-prism/
-├── cmd/                    # Service entrypoints
-│   ├── gateway/           # API Gateway service
-│   ├── auth/              # Authentication service
-│   └── config/            # Configuration service
-├── internal/              # Private application code
-│   ├── gateway/           # Gateway implementation
-│   │   ├── proxy/         # Reverse proxy logic
-│   │   ├── middleware/    # HTTP middleware
-│   │   └── router/        # Request routing
-│   ├── auth/              # Auth implementation
-│   │   ├── jwt/           # JWT handling
-│   │   ├── oauth/         # OAuth providers
-│   │   ├── repository/    # Database operations
-│   │   ├── service/       # Business logic
-│   │   └── server/        # gRPC server
-│   └── shared/            # Shared utilities
-│       ├── logger/        # Structured logging
-│       ├── errors/        # Error types
-│       └── health/        # Health checks
-├── api/proto/             # Protocol Buffer definitions
-├── configs/               # Configuration files
-├── deploy/                # Deployment configurations
-│   ├── docker/            # Dockerfiles
-│   ├── docker-compose/    # Docker Compose files
-│   └── observability/     # Grafana, Loki, Promtail
-├── migrations/            # Database migrations
-└── scripts/               # Utility scripts
-```
+| Service | URL | Description |
+|---------|-----|-------------|
+| Gateway | `http://localhost:8080` | API Gateway |
+| Auth HTTP | `http://localhost:8081` | OAuth callbacks |
+| Grafana | `http://localhost:3000` | Dashboards (admin/admin) |
+| Consul | `http://localhost:8500` | Service discovery |
+| Prometheus | `http://localhost:9090` | Metrics |
 
-## Configuration
-
-### Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `GATEWAY_PORT` | Gateway HTTP port | `8080` |
-| `AUTH_GRPC_PORT` | Auth service gRPC port | `50051` |
-| `DATABASE_HOST` | PostgreSQL host | `localhost` |
-| `DATABASE_PASSWORD` | PostgreSQL password | `prism_secret` |
-| `JWT_PRIVATE_KEY_PATH` | Path to RSA private key | `./keys/private.pem` |
-| `GOOGLE_CLIENT_ID` | Google OAuth client ID | - |
-| `GITHUB_CLIENT_ID` | GitHub OAuth client ID | - |
-
-See `.env.example` for all available options.
-
-### Route Configuration
-
-Routes can be configured in `configs/gateway.yaml`:
-
-```yaml
-routes:
-  - id: api-v1
-    name: API v1
-    paths:
-      - /api/v1/
-    targets:
-      - http://backend:3000
-    auth_required: true
-    rate_limit_key: api-default
-```
-
-## API Reference
+## Usage
 
 ### Authentication
 
@@ -154,118 +186,86 @@ curl -X POST http://localhost:8081/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email": "user@example.com", "password": "secure123", "name": "User"}'
 
-# Login
+# Login - returns JWT tokens
 curl -X POST http://localhost:8081/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email": "user@example.com", "password": "secure123"}'
-
-# OAuth (redirect user to)
-http://localhost:8081/auth/google/login
-http://localhost:8081/auth/github/login
 ```
 
-### Using the Gateway
+### API Requests
 
 ```bash
-# With JWT token
+# With JWT
 curl http://localhost:8080/api/v1/resource \
   -H "Authorization: Bearer <access_token>"
 
-# With API key
+# With API Key
 curl http://localhost:8080/api/v1/resource \
   -H "X-API-Key: prism_abc123..."
 ```
 
+## Project Structure
+
+```
+prism/
+├── services/
+│   ├── gateway/          # API Gateway
+│   │   ├── cmd/          # Entrypoint
+│   │   └── internal/     # Proxy, router, middleware, circuit breaker
+│   ├── auth/             # Authentication Service
+│   │   ├── cmd/          # Entrypoint
+│   │   └── internal/     # JWT, OAuth, repository, service
+│   ├── config/           # Configuration Service
+│   │   ├── cmd/          # Entrypoint
+│   │   └── internal/     # Consul client, service, server
+│   └── shared/           # Shared Libraries
+│       ├── errors/       # Error types with HTTP/gRPC mapping
+│       ├── health/       # Health check infrastructure
+│       ├── logger/       # Structured logging (slog)
+│       ├── metrics/      # Prometheus metrics
+│       ├── tls/          # TLS configuration
+│       └── proto/        # Protocol Buffers
+├── configs/              # YAML configuration files
+├── migrations/           # Database migrations
+├── deploy/               # Docker, docker-compose, observability
+└── docs/guides/          # Documentation
+```
+
+## Documentation
+
+| Guide | Description |
+|-------|-------------|
+| [Configuration](docs/guides/configuration.md) | Service configuration options |
+| [Authentication](docs/guides/authentication.md) | JWT, OAuth, API keys |
+| [Routing](docs/guides/routing.md) | Route configuration and load balancing |
+| [Observability](docs/guides/observability.md) | Metrics, logging, tracing |
+| [Deployment](docs/guides/deployment.md) | Docker, Kubernetes |
+
 ## Development
 
-### Make Targets
-
 ```bash
-make build          # Build all services
-make test           # Run tests
-make lint           # Run linter
-make proto          # Generate protobuf code
-make docker-build   # Build Docker images
-make docker-up      # Start Docker Compose
-make docker-down    # Stop Docker Compose
-make generate-keys  # Generate JWT keys
+make build           # Build all services
+make test            # Run tests
+make test-coverage   # Generate coverage report
+make lint            # Run linter
+make proto           # Generate protobuf code
+make fmt             # Format code
 ```
-
-### Running Tests
-
-```bash
-# All tests
-make test
-
-# With coverage
-make test-coverage
-
-# Integration tests
-make test-integration
-```
-
-### Code Quality
-
-```bash
-# Install tools
-make install-tools
-
-# Format code
-make fmt
-
-# Run linter
-make lint
-
-# Security scan
-make security-scan
-```
-
-## Observability
-
-### Grafana Dashboards
-
-Access Grafana at `http://localhost:3000` (default: admin/admin)
-
-Pre-configured dashboards:
-- **Prism Gateway** - Request rates, latencies, errors
-- **Service Logs** - Aggregated logs from all services
-
-### Log Queries (Loki)
-
-```logql
-# All gateway errors
-{service="gateway"} |= "error"
-
-# Slow requests (>1s)
-{service="gateway"} | json | duration > 1s
-
-# Requests by user
-{service="gateway"} | json | user_id="<user-id>"
-```
-
-## Security
-
-- JWT tokens use RS256 (asymmetric) signing
-- Passwords are hashed with bcrypt
-- API keys are stored as SHA256 hashes
-- Rate limiting prevents abuse
-- CORS and security headers configurable
-- OAuth state parameter for CSRF protection
 
 ## Contributing
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+2. Create a feature branch (`git checkout -b feature/amazing`)
 3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
+4. Push to branch (`git push origin feature/amazing`)
 5. Open a Pull Request
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) for details.
 
-## Acknowledgments
+---
 
-- [Kong](https://github.com/Kong/kong) - Inspiration for gateway features
-- [Traefik](https://github.com/traefik/traefik) - Dynamic configuration patterns
-- [Grafana Loki](https://github.com/grafana/loki) - Log aggregation
+<p align="center">
+  Built with Go • Powered by gRPC • Monitored by Prometheus
+</p>
