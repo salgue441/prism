@@ -1,0 +1,57 @@
+# DB Manager Service Configuration
+# =============================================================================
+
+grpc:
+  host: "0.0.0.0"
+  port: 50053
+
+databases:
+  auth:
+    host: "localhost"
+    port: 5432
+    user: "prism"
+    password: ""  # Set via environment variable
+    name: "prism_auth"
+    ssl_mode: "disable"
+    max_open_conns: 10
+    max_idle_conns: 2
+    conn_max_lifetime: "5m"
+
+  ops:
+    host: "localhost"
+    port: 5433
+    user: "prism"
+    password: ""  # Set via environment variable
+    name: "prism_ops"
+    ssl_mode: "disable"
+    max_open_conns: 10
+    max_idle_conns: 2
+    conn_max_lifetime: "5m"
+
+migrations:
+  auth_path: "./migrations/auth"
+  ops_path: "./migrations/ops"
+  auto_run: false
+
+backup:
+  enabled: true
+  schedule: "0 0 2 * * *"  # 2 AM daily (with seconds)
+  retention_days: 30
+  storage_type: "local"  # local, s3, minio
+  storage_path: "/var/lib/prism/backups"
+  timeout: "30m"
+
+  s3:
+    endpoint: ""
+    bucket: "prism-backups"
+    access_key_id: ""
+    secret_access_key: ""
+    region: "us-east-1"
+    use_ssl: true
+
+health:
+  check_interval: "30s"
+
+log:
+  level: "info"
+  format: "json"

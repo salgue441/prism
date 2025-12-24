@@ -1,0 +1,215 @@
+syntax = "proto3";
+
+package prism.dbmanager.v1;
+
+option go_package = "github.com/carlossalguero/prism/services/shared/proto/gen;proto";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+// DBManagerService provides database management operations including
+// migrations, backups, and health monitoring.
+service DBManagerService {
+  // Migration operations
+  rpc GetMigrationStatus(GetMigrationStatusRequest) returns (MigrationStatusResponse);
+  rpc RunMigrations(RunMigrationsRequest) returns (MigrationResult);
+  rpc RollbackMigration(RollbackMigrationRequest) returns (MigrationResult);
+
+  // Backup operations
+  rpc CreateBackup(CreateBackupRequest) returns (BackupResult);
+  rpc ListBackups(ListBackupsRequest) returns (BackupListResponse);
+  rpc RestoreBackup(RestoreBackupRequest) returns (RestoreResult);
+  rpc VerifyBackup(VerifyBackupRequest) returns (VerifyBackupResult);
+  rpc DeleteBackup(DeleteBackupRequest) returns (google.protobuf.Empty);
+
+  // Health monitoring
+  rpc GetDatabaseHealth(GetDatabaseHealthRequest) returns (DatabaseHealthResponse);
+  rpc GetConnectionPoolStats(GetConnectionPoolStatsRequest) returns (ConnectionPoolStatsResponse);
+}
+
+// =============================================================================
+// Migration Messages
+// =============================================================================
+
+message GetMigrationStatusRequest {
+  string database = 1; // "auth" or "ops"
+}
+
+message MigrationStatusResponse {
+  string database = 1;
+  string current_version = 2;
+  repeated MigrationInfo applied_migrations = 3;
+  repeated MigrationInfo pending_migrations = 4;
+  bool is_dirty = 5;
+}
+
+message MigrationInfo {
+  string version = 1;
+  string name = 2;
+  google.protobuf.Timestamp applied_at = 3;
+  string checksum = 4;
+  int64 execution_time_ms = 5;
+}
+
+message RunMigrationsRequest {
+  string database = 1;
+  int32 steps = 2; // 0 = all pending, N = up to N steps
+  bool dry_run = 3;
+}
+
+message MigrationResult {
+  bool success = 1;
+  string message = 2;
+  repeated MigrationInfo applied = 3;
+  string error = 4;
+}
+
+message RollbackMigrationRequest {
+  string database = 1;
+  int32 steps = 2; // Number of migrations to rollback
+}
+
+// =============================================================================
+// Backup Messages
+// =============================================================================
+
+message CreateBackupRequest {
+  string database = 1;
+  BackupType type = 2;
+  string description = 3;
+}
+
+enum BackupType {
+  BACKUP_TYPE_UNSPECIFIED = 0;
+  BACKUP_TYPE_FULL = 1;
+  BACKUP_TYPE_INCREMENTAL = 2;
+  BACKUP_TYPE_LOGICAL = 3; // pg_dump
+}
+
+message BackupResult {
+  bool success = 1;
+  string backup_id = 2;
+  string location = 3;
+  int64 size_bytes = 4;
+  int32 duration_seconds = 5;
+  string error = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+message ListBackupsRequest {
+  string database = 1;
+  BackupType type = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+}
+
+message BackupListResponse {
+  repeated BackupInfo backups = 1;
+  int32 total = 2;
+}
+
+message BackupInfo {
+  string id = 1;
+  string database = 2;
+  BackupType type = 3;
+  string location = 4;
+  int64 size_bytes = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp completed_at = 7;
+  BackupStatus status = 8;
+  bool verified = 9;
+  google.protobuf.Timestamp verified_at = 10;
+  string description = 11;
+}
+
+enum BackupStatus {
+  BACKUP_STATUS_UNSPECIFIED = 0;
+  BACKUP_STATUS_RUNNING = 1;
+  BACKUP_STATUS_COMPLETED = 2;
+  BACKUP_STATUS_FAILED = 3;
+}
+
+message RestoreBackupRequest {
+  string backup_id = 1;
+  string target_database = 2; // Optional: restore to different DB
+  bool dry_run = 3;
+}
+
+message RestoreResult {
+  bool success = 1;
+  string message = 2;
+  int32 duration_seconds = 3;
+  string error = 4;
+}
+
+message VerifyBackupRequest {
+  string backup_id = 1;
+}
+
+message VerifyBackupResult {
+  bool valid = 1;
+  string message = 2;
+  string checksum = 3;
+}
+
+message DeleteBackupRequest {
+  string backup_id = 1;
+}
+
+// =============================================================================
+// Health Monitoring Messages
+// =============================================================================
+
+message GetDatabaseHealthRequest {
+  string database = 1; // "auth", "ops", or empty for all
+}
+
+message DatabaseHealthResponse {
+  repeated DatabaseHealth databases = 1;
+}
+
+message DatabaseHealth {
+  string database = 1;
+  bool healthy = 2;
+  string status = 3;
+
+  // Connection info
+  int32 active_connections = 4;
+  int32 idle_connections = 5;
+  int32 max_connections = 6;
+
+  // Performance metrics
+  double cache_hit_ratio = 7;
+  double index_hit_ratio = 8;
+  int64 database_size_bytes = 9;
+
+  // Issues
+  int64 deadlocks = 10;
+  int32 long_running_queries = 11;
+  double bloat_ratio = 12;
+  double replication_lag_seconds = 13;
+
+  google.protobuf.Timestamp checked_at = 14;
+  repeated HealthIssue issues = 15;
+}
+
+message HealthIssue {
+  string severity = 1; // "warning", "critical"
+  string message = 2;
+  string recommendation = 3;
+}
+
+message GetConnectionPoolStatsRequest {
+  string database = 1;
+}
+
+message ConnectionPoolStatsResponse {
+  string database = 1;
+  int32 total_connections = 2;
+  int32 active_connections = 3;
+  int32 idle_connections = 4;
+  int32 wait_count = 5;
+  int64 wait_duration_ms = 6;
+  int32 max_idle_closed = 7;
+  int32 max_lifetime_closed = 8;
+}
