@@ -1,0 +1,66 @@
+# Prism Auth Service Configuration
+# This file configures the Authentication service
+
+# gRPC server
+grpc:
+  host: 0.0.0.0
+  port: 50051
+
+# HTTP server (for OAuth callbacks)
+http:
+  host: 0.0.0.0
+  port: 8081
+
+# Database configuration
+database:
+  host: localhost
+  port: 5432
+  user: prism
+  password: prism_secret
+  name: prism
+  ssl_mode: disable
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 5m
+
+# JWT configuration
+jwt:
+  private_key_path: ./keys/private.pem
+  public_key_path: ./keys/public.pem
+  access_token_ttl: 15m
+  refresh_token_ttl: 168h  # 7 days
+  issuer: prism
+
+# OAuth providers
+oauth:
+  google:
+    client_id: ""      # Set via environment: GOOGLE_CLIENT_ID
+    client_secret: ""  # Set via environment: GOOGLE_CLIENT_SECRET
+    redirect_url: http://localhost:8081/auth/google/callback
+  github:
+    client_id: ""      # Set via environment: GITHUB_CLIENT_ID
+    client_secret: ""  # Set via environment: GITHUB_CLIENT_SECRET
+    redirect_url: http://localhost:8081/auth/github/callback
+
+# Password policy
+password:
+  min_length: 8
+  require_uppercase: true
+  require_lowercase: true
+  require_number: true
+  require_special: false
+
+# Session configuration
+session:
+  max_sessions_per_user: 10
+  cleanup_interval: 1h
+
+# API Key configuration
+api_key:
+  prefix: prism_
+  default_expiry_days: 365
+
+# Logging
+log:
+  level: info
+  format: json

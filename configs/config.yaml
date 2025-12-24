@@ -1,0 +1,29 @@
+# Prism Config Service Configuration
+# This file configures the Configuration management service
+
+# gRPC server
+grpc:
+  host: 0.0.0.0
+  port: 50052
+
+# Consul configuration
+consul:
+  address: localhost:8500
+  token: ""  # Set via environment: CONSUL_TOKEN
+  datacenter: dc1
+
+  # Key prefixes for different config types
+  key_prefixes:
+    routes: prism/routes/
+    upstreams: prism/upstreams/
+    rate_limits: prism/rate-limits/
+
+# Watch configuration
+watch:
+  enabled: true
+  poll_interval: 5s
+
+# Logging
+log:
+  level: info
+  format: json

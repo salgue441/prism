@@ -1,0 +1,89 @@
+# Prism Gateway Configuration
+# This file configures the API Gateway service
+
+host: 0.0.0.0
+port: 8080
+
+# Timeouts
+read_timeout: 30s
+write_timeout: 30s
+idle_timeout: 120s
+
+# Auth service connection
+auth:
+  grpc_address: localhost:50051
+  timeout: 5s
+
+# Rate limiting
+rate_limit:
+  requests_per_second: 100
+  burst_size: 200
+
+# Logging
+log:
+  level: info  # debug, info, warn, error
+  format: json # json, text
+
+# Routes configuration
+# Routes can also be configured dynamically via the Config service
+routes:
+  # Example route configuration
+  - id: example-api
+    name: Example API
+    priority: 100
+    paths:
+      - /api/v1/
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+    targets:
+      - http://localhost:3001
+    strip_path: false
+    auth_required: true
+    enabled: true
+
+  # Health check passthrough
+  - id: health
+    name: Health Check
+    priority: 1000
+    paths:
+      - /health
+    methods:
+      - GET
+    targets:
+      - http://localhost:8080
+    auth_required: false
+    enabled: true
+
+# CORS configuration
+cors:
+  enabled: true
+  allowed_origins:
+    - http://localhost:3000
+    - http://localhost:8080
+  allowed_methods:
+    - GET
+    - POST
+    - PUT
+    - DELETE
+    - OPTIONS
+    - PATCH
+  allowed_headers:
+    - Accept
+    - Authorization
+    - Content-Type
+    - X-Request-ID
+    - X-API-Key
+  exposed_headers:
+    - X-Request-ID
+  allow_credentials: true
+  max_age: 3600
+
+# Security headers
+security:
+  enable_hsts: true
+  enable_xss_protection: true
+  enable_content_type_nosniff: true
+  enable_frame_deny: true
