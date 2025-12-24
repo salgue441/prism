@@ -1,3 +1,8 @@
+# Claude/Cursor
+.cursor
+.claude
+CLAUDE.md
+
 # Binaries
 bin/
 *.exe
